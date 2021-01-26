@@ -11,4 +11,5 @@
   static undefined print (DOMString message);
   static undefined log (DOMString message);
   static undefined crash (optional DOMString message = null);
+  static undefined gc();
 };
