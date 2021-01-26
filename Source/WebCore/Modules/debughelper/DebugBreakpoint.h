@@ -27,6 +27,7 @@ public:
     static void print(const String& message) { printMessage(message); }
     static void log(const String& message) { printMessage(message); }
     static void crash(const String& message);
+    static void gc();
 };
 
 } /* namespace WebCore */

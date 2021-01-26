@@ -9,6 +9,7 @@
 #include "DebugBreakpoint.h"
 #include <stdio.h>
 #include <wtf/text/CString.h>
+#include <bindings/js/GCController.h>
 
 namespace WebCore
 {
@@ -46,6 +47,11 @@ void DebugBreakpoint::crash(const String& message)
     CRASH();
 #endif
     return;
+}
+
+void DebugBreakpoint::gc()
+{
+    GCController::singleton().garbageCollectNow();
 }
 
 } /* namespace WebCore */
