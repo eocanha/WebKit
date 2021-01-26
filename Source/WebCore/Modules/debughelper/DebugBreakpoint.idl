@@ -1,0 +1,14 @@
+/*
+ * Copyright (C) 2014 Igalia. All rights reserved.
+ */
+
+[
+    JSGenerateToJSObject,
+    JSGenerateToNativeObject,
+    Exposed=Window
+] interface DebugBreakpoint {
+  static undefined printMessage (DOMString message);
+  static undefined print (DOMString message);
+  static undefined log (DOMString message);
+  static undefined crash (optional DOMString message = null);
+};

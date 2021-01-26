@@ -29,6 +29,7 @@ set(WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/Modules/contact-picker"
     "${WEBCORE_DIR}/Modules/cookie-consent"
     "${WEBCORE_DIR}/Modules/credentialmanagement"
+    "${WEBCORE_DIR}/Modules/debughelper"
     "${WEBCORE_DIR}/Modules/encryptedmedia"
     "${WEBCORE_DIR}/Modules/encryptedmedia/legacy"
     "${WEBCORE_DIR}/Modules/entriesapi"
@@ -206,6 +207,7 @@ set(WebCore_IDL_INCLUDES
     Modules/airplay
     Modules/cache
     Modules/credentialmanagement
+    Modules/debughelper
     Modules/encryptedmedia/legacy
     Modules/entriesapi
     Modules/fetch
@@ -272,6 +274,8 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/credentialmanagement/CredentialRequestOptions.idl
     Modules/credentialmanagement/CredentialsContainer.idl
     Modules/credentialmanagement/Navigator+Credentials.idl
+
+    Modules/debughelper/DebugBreakpoint.idl
 
     Modules/encryptedmedia/MediaKeyEncryptionScheme.idl
     Modules/encryptedmedia/MediaKeyMessageEventInit.idl
