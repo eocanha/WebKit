@@ -129,6 +129,15 @@ const Vector<String>& CDMFactoryThunder::supportedKeySystems() const
             supportedKeySystems.append(String::fromLatin1(GStreamerEMEUtilities::s_PlayReadyKeySystems[0]));
             supportedKeySystems.append(String::fromLatin1(GStreamerEMEUtilities::s_PlayReadyKeySystems[1]));
         }
+        if (!supportedKeySystems.isEmpty()) {
+            unsigned thunderRank = isThunderRanked() ? 300 : 100;
+            gst_element_register(nullptr, "webkitthunder", GST_RANK_PRIMARY + thunderRank, WEBKIT_TYPE_MEDIA_THUNDER_DECRYPT);
+        }
+#ifndef NDEBUG
+        else if (isThunderRanked())
+            GST_WARNING("Thunder is up-ranked as preferred decryptor but Thunder is not supporting any encryption system. Is "
+                "Thunder running? Are the plugins built?");
+#endif
         GST_DEBUG("%zu supported key systems", supportedKeySystems.size());
     };
     return supportedKeySystems;

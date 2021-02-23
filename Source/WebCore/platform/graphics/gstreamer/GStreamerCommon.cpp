@@ -359,7 +359,6 @@ void registerWebKitGStreamerElements()
                 "Thunder running? Are the plugins built?");
         }
 #endif
-
 #endif
 
 #if ENABLE(MEDIA_STREAM)
