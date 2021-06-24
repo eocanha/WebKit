@@ -659,6 +659,9 @@ private:
     std::optional<DMABufFormat> m_dmabufFormat;
     GstVideoInfo m_videoInfo;
 #endif
+
+public:
+    gulong debugProbeIds[10] = { 0 };
 };
 
 } // namespace WebCore
