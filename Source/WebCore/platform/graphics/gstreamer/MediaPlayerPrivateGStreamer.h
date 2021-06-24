@@ -679,6 +679,9 @@ private:
     std::optional<VideoFrameGStreamer::Info> m_videoInfo;
 
     bool m_volumeLocked { false };
+
+public:
+    gulong debugProbeIds[10] = { 0 };
 };
 
 } // namespace WebCore
