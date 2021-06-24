@@ -606,6 +606,9 @@ private:
     GRefPtr<GstStreamCollection> m_streamCollection;
 
     AbortableTaskQueue m_sinkTaskQueue;
+
+public:
+    gulong debugProbeIds[10] = { 0 };
 };
 
 }
