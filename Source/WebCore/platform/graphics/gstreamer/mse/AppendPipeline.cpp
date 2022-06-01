@@ -394,6 +394,24 @@ void AppendPipeline::appsinkNewSample(const Track& track, GRefPtr<GstSample>&& s
 
     auto mediaSample = MediaSampleGStreamer::create(WTFMove(sample), track.presentationSize, track.trackId);
 
+    // Apply edit list offset.
+    GstSegment* segment = gst_sample_get_segment(mediaSample->platformSample().sample.gstSample);
+    GstBuffer* buffer = gst_sample_get_buffer(mediaSample->platformSample().sample.gstSample);
+    GstClockTime streamTimePts = 0;
+    GstClockTime streamTimePtsMyWay = toGstClockTime(mediaSample->presentationTime() - fromGstClockTime((segment->position > segment->time) ? (segment->position - segment->time) : 0));
+    gint sign = gst_segment_to_stream_time_full(segment, GST_FORMAT_TIME, GST_BUFFER_PTS(buffer), &streamTimePts);
+    streamTimePts = toGstClockTime(fromGstClockTime(streamTimePts));
+    GST_TRACE("%s streamTimePts: %" GST_TIME_FORMAT " (my way: %" GST_TIME_FORMAT ")%s",
+        mediaSample->trackID().string().utf8().data(),
+        GST_TIME_ARGS(streamTimePts), GST_TIME_ARGS(streamTimePtsMyWay),
+        streamTimePts == streamTimePtsMyWay ? "" : "Different!");
+    if (sign >= 0) {
+        mediaSample->setTimestamps(fromGstClockTime(streamTimePts), mediaSample->decodeTime());
+    } else {
+        GST_WARNING("Detected unsupported negative PTS: -%" GST_TIME_FORMAT ", clamping to 0 instead", GST_TIME_ARGS(-streamTimePts));
+        mediaSample->setTimestamps(MediaTime::zeroTime(), mediaSample->decodeTime());
+    }
+
     GST_TRACE("append: trackId=%s PTS=%s DTS=%s DUR=%s presentationSize=%.0fx%.0f",
         mediaSample->trackID().string().utf8().data(),
         mediaSample->presentationTime().toString().utf8().data(),
