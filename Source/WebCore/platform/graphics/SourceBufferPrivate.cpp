@@ -949,6 +949,11 @@ void SourceBufferPrivate::didReceiveSample(Ref<MediaSample>&& originalSample)
                 trackBuffer.roundedTimestampOffset = roundTowardsTimeScaleWithRoundingMargin(m_timestampOffset, trackBuffer.lastFrameTimescale, microsecond);
             }
 
+            printf("### %s: %s: Adding timestampOffset: %s + %s = %s\n", __PRETTY_FUNCTION__,
+                trackID.string().utf8().data(), presentationTimestamp.toString().utf8().data(),
+                trackBuffer.roundedTimestampOffset.toString().utf8().data(),
+                (presentationTimestamp + trackBuffer.roundedTimestampOffset).toString().utf8().data()); fflush(stdout);
+
             // 1.4.1 Add timestampOffset to the presentation timestamp.
             presentationTimestamp += trackBuffer.roundedTimestampOffset;
 

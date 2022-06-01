@@ -401,10 +401,13 @@ void AppendPipeline::appsinkNewSample(const Track& track, GRefPtr<GstSample>&& s
     GstClockTime streamTimePtsMyWay = toGstClockTime(mediaSample->presentationTime() - fromGstClockTime((segment->position > segment->time) ? (segment->position - segment->time) : 0));
     gint sign = gst_segment_to_stream_time_full(segment, GST_FORMAT_TIME, GST_BUFFER_PTS(buffer), &streamTimePts);
     streamTimePts = toGstClockTime(fromGstClockTime(streamTimePts));
-    GST_TRACE("%s streamTimePts: %" GST_TIME_FORMAT " (my way: %" GST_TIME_FORMAT ")%s",
+    GST_TRACE("%s streamTimePts: %" GST_TIME_FORMAT " (my way: %" GST_TIME_FORMAT ")%s, segment: %" GST_SEGMENT_FORMAT ",%s, buffer %" GST_PTR_FORMAT,
         mediaSample->trackID().string().utf8().data(),
         GST_TIME_ARGS(streamTimePts), GST_TIME_ARGS(streamTimePtsMyWay),
-        streamTimePts == streamTimePtsMyWay ? "" : "Different!");
+        streamTimePts == streamTimePtsMyWay ? "" : " Different!",
+        segment,
+        (segment->start != segment->position) ? " start != position" : "",
+        buffer);
     if (sign >= 0) {
         mediaSample->setTimestamps(fromGstClockTime(streamTimePts), mediaSample->decodeTime());
     } else {
