@@ -130,6 +130,17 @@ void SourceBufferPrivate::setBufferedRanges(const PlatformTimeRanges& timeRanges
 {
     m_buffered->ranges() = timeRanges;
     setBufferedDirty(true);
+
+    StringPrintStream s;
+    m_buffered->ranges().dump(s);
+    String trackId;
+    for (auto k : m_trackBufferMap.keys()) {
+        if (!trackId.isEmpty())
+            trackId = trackId + " ";
+        trackId = trackId + k.string();
+    }
+
+    //printf("### %s: %s %s\n", __PRETTY_FUNCTION__, trackId.utf8().data(), s.toString().utf8().data()); fflush(stdout);
 }
 
 void SourceBufferPrivate::updateBufferedFromTrackBuffers(bool sourceIsEnded)
