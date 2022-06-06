@@ -63,7 +63,7 @@ const PlatformTimeRanges& PlatformTimeRanges::emptyRanges()
 
 MediaTime PlatformTimeRanges::timeFudgeFactor()
 {
-    return { 2002, 24000 };
+    return { 1, 10 };
 }
 
 void PlatformTimeRanges::invert()
