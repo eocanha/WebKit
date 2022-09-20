@@ -2165,7 +2165,6 @@ void MediaPlayerPrivateGStreamer::configureDownloadBuffer(GstElement* element)
     RELEASE_ASSERT(g_str_has_prefix(elementName.get(), "downloadbuffer"));
 
     m_downloadBuffer = element;
-    g_signal_connect_swapped(element, "notify::temp-location", G_CALLBACK(downloadBufferFileCreatedCallback), this);
 
     // Set the GstDownloadBuffer size to our preferred value controls the thresholds for buffering events.
     g_object_set(element, "max-size-bytes", 100 * KB, nullptr);
@@ -2186,47 +2185,6 @@ void MediaPlayerPrivateGStreamer::configureDownloadBuffer(GstElement* element)
     GUniquePtr<char> newDownloadTemplate(g_build_filename(G_DIR_SEPARATOR_S, mediaDiskCachePath.get(), "WebKit-Media-XXXXXX", nullptr));
     g_object_set(element, "temp-template", newDownloadTemplate.get(), nullptr);
     GST_DEBUG_OBJECT(pipeline(), "Reconfigured file download template from '%s' to '%s'", oldDownloadTemplate.get(), newDownloadTemplate.get());
-
-    auto newDownloadPrefixPath = makeStringByReplacingAll(String::fromLatin1(newDownloadTemplate.get()), "XXXXXX"_s, ""_s);
-    purgeOldDownloadFiles(newDownloadPrefixPath);
-}
-
-void MediaPlayerPrivateGStreamer::downloadBufferFileCreatedCallback(MediaPlayerPrivateGStreamer* player)
-{
-    ASSERT(player->m_downloadBuffer);
-
-    g_signal_handlers_disconnect_by_func(player->m_downloadBuffer.get(), reinterpret_cast<gpointer>(downloadBufferFileCreatedCallback), player);
-
-    GUniqueOutPtr<char> downloadFile;
-    g_object_get(player->m_downloadBuffer.get(), "temp-location", &downloadFile.outPtr(), nullptr);
-
-    if (UNLIKELY(!FileSystem::deleteFile(String::fromUTF8(downloadFile.get())))) {
-        GST_WARNING("Couldn't unlink media temporary file %s after creation", downloadFile.get());
-        return;
-    }
-
-    GST_DEBUG_OBJECT(player->pipeline(), "Unlinked media temporary file %s after creation", downloadFile.get());
-}
-
-void MediaPlayerPrivateGStreamer::purgeOldDownloadFiles(const String& downloadFilePrefixPath)
-{
-    if (downloadFilePrefixPath.isEmpty())
-        return;
-
-    auto templateDirectory = FileSystem::parentPath(downloadFilePrefixPath);
-    auto templatePrefix = FileSystem::pathFileName(downloadFilePrefixPath);
-    for (auto& fileName : FileSystem::listDirectory(templateDirectory)) {
-        if (!fileName.startsWith(templatePrefix))
-            continue;
-
-        auto filePath = FileSystem::pathByAppendingComponent(templateDirectory, fileName);
-        if (UNLIKELY(!FileSystem::deleteFile(filePath))) {
-            GST_WARNING("Couldn't unlink legacy media temporary file: %s", filePath.utf8().data());
-            continue;
-        }
-
-        GST_TRACE("Unlinked legacy media temporary file: %s", filePath.utf8().data());
-    }
 }
 
 void MediaPlayerPrivateGStreamer::asyncStateChangeDone()

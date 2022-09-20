@@ -480,9 +480,7 @@ private:
     bool didPassCORSAccessCheck() const override;
     bool canSaveMediaData() const override;
 
-    void purgeOldDownloadFiles(const String& downloadFilePrefixPath);
     void configureDownloadBuffer(GstElement*);
-    static void downloadBufferFileCreatedCallback(MediaPlayerPrivateGStreamer*);
 
     void configureDepayloader(GstElement*);
     void configureVideoDecoder(GstElement*);
