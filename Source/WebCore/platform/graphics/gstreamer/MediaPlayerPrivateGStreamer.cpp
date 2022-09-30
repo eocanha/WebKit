@@ -2308,7 +2308,7 @@ void MediaPlayerPrivateGStreamer::updateStates()
             if (m_isBuffering) {
                 GRefPtr<GstQuery> query = adoptGRef(gst_query_new_buffering(GST_FORMAT_PERCENT));
 
-                m_isBuffering = m_bufferingPercentage == 100;
+                m_isBuffering = m_bufferingPercentage < 100; // ### DEBUG
                 if (gst_element_query(m_pipeline.get(), query.get())) {
                     gboolean isBuffering = m_isBuffering;
                     gst_query_parse_buffering_percent(query.get(), &isBuffering, nullptr);
