@@ -2031,6 +2031,7 @@ void MediaPlayerPrivateGStreamer::updateBufferingStatus(GstBufferingMode mode, d
 #endif
 
     m_didDownloadFinish = percentage == 100;
+    //m_isBuffering = !m_didDownloadFinish; // ### DEBUG
 
     if (!m_didDownloadFinish)
         m_isBuffering = true;
@@ -2305,26 +2306,32 @@ void MediaPlayerPrivateGStreamer::updateStates()
         case GST_STATE_PAUSED:
             FALLTHROUGH;
         case GST_STATE_PLAYING:
+            printf("### %s: (A) m_isBuffering: %s\n", __PRETTY_FUNCTION__, boolForPrinting(m_isBuffering)); fflush(stdout);
             if (m_isBuffering) {
                 GRefPtr<GstQuery> query = adoptGRef(gst_query_new_buffering(GST_FORMAT_PERCENT));
 
                 m_isBuffering = m_bufferingPercentage < 100; // ### DEBUG
+                printf("### %s: (B) m_isBuffering: %s, m_bufferingPercentage: %d\n", __PRETTY_FUNCTION__, boolForPrinting(m_isBuffering), m_bufferingPercentage); fflush(stdout);
                 if (gst_element_query(m_pipeline.get(), query.get())) {
                     gboolean isBuffering = m_isBuffering;
                     gst_query_parse_buffering_percent(query.get(), &isBuffering, nullptr);
                     m_isBuffering = isBuffering;
+                    printf("### %s: m_isBuffering from gst_query_parse_buffering_percent busy: %s\n", __PRETTY_FUNCTION__, boolForPrinting(m_isBuffering)); fflush(stdout);
                 }
 
                 if (!m_isBuffering) {
                     GST_INFO_OBJECT(pipeline(), "[Buffering] Complete.");
                     m_readyState = MediaPlayer::ReadyState::HaveEnoughData;
+                    printf("### %s: Setting HaveEnoughData (A) (not buffering)\n", __PRETTY_FUNCTION__); fflush(stdout);
                     m_networkState = m_didDownloadFinish ? MediaPlayer::NetworkState::Idle : MediaPlayer::NetworkState::Loading;
                 } else {
                     m_readyState = MediaPlayer::ReadyState::HaveCurrentData;
+                    printf("### %s: Setting HaveCurrentData\n", __PRETTY_FUNCTION__); fflush(stdout);
                     m_networkState = MediaPlayer::NetworkState::Loading;
                 }
             } else if (m_didDownloadFinish) {
                 m_readyState = MediaPlayer::ReadyState::HaveEnoughData;
+                printf("### %s: Setting HaveEnoughData (B) (download finished)\n", __PRETTY_FUNCTION__); fflush(stdout);
                 m_networkState = MediaPlayer::NetworkState::Loaded;
             } else {
                 m_readyState = MediaPlayer::ReadyState::HaveFutureData;

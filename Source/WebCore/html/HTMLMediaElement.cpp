@@ -2708,6 +2708,17 @@ void HTMLMediaElement::durationChanged()
     scheduleEvent(eventNames().durationchangeEvent);
 }
 
+static const char* printReadyState(HTMLMediaElementEnums::ReadyState state) {
+    switch (state) {
+    case HTMLMediaElementEnums::ReadyState::HAVE_NOTHING: return "HaveNothing";
+    case HTMLMediaElementEnums::ReadyState::HAVE_METADATA: return "HaveMetadata";
+    case HTMLMediaElementEnums::ReadyState::HAVE_CURRENT_DATA: return "HaveCurrentData";
+    case HTMLMediaElementEnums::ReadyState::HAVE_FUTURE_DATA: return "HaveFutureData";
+    case HTMLMediaElementEnums::ReadyState::HAVE_ENOUGH_DATA: return "HaveEnoughData";
+    default: return "<Invalid>";
+    }
+}
+
 void HTMLMediaElement::setReadyState(MediaPlayer::ReadyState state)
 {
     // Set "wasPotentiallyPlaying" BEFORE updating m_readyState, potentiallyPlaying() uses it
@@ -2718,8 +2729,12 @@ void HTMLMediaElement::setReadyState(MediaPlayer::ReadyState state)
 
     bool tracksAreReady = textTracksAreReady();
 
-    if (newState == oldState && m_tracksAreReady == tracksAreReady)
+    printf("### %s: oldState: %s, state: %s, tracksAreReady: %s\n", __PRETTY_FUNCTION__, printReadyState(oldState), printReadyState(newState), boolForPrinting(tracksAreReady)); fflush(stdout);
+
+    if (newState == oldState && m_tracksAreReady == tracksAreReady) {
+        printf("### %s: return (A)\n", __PRETTY_FUNCTION__); fflush(stdout);
         return;
+    }
 
     m_tracksAreReady = tracksAreReady;
 
@@ -2739,8 +2754,10 @@ void HTMLMediaElement::setReadyState(MediaPlayer::ReadyState state)
     if (oldState > m_readyStateMaximum)
         m_readyStateMaximum = oldState;
 
-    if (m_networkState == NETWORK_EMPTY)
+    if (m_networkState == NETWORK_EMPTY) {
+        printf("### %s: return (B)\n", __PRETTY_FUNCTION__); fflush(stdout);
         return;
+    }
 
     if (m_seeking) {
         // 4.8.10.9, step 11
@@ -2761,6 +2778,7 @@ void HTMLMediaElement::setReadyState(MediaPlayer::ReadyState state)
 
     // Apply the first applicable set of substeps from the following list:
     do {
+        printf("### %s: do\n", __PRETTY_FUNCTION__); fflush(stdout);
         // FIXME: The specification seems to only say HAVE_METADATA
         // explicitly (rather than or higher) for this state. It's unclear
         // if/how things like loadedmetadataEvent should happen if
@@ -2801,8 +2819,10 @@ void HTMLMediaElement::setReadyState(MediaPlayer::ReadyState state)
 
             // As the spec only mentiones HAVE_METADATA, run the later
             // steps if we are moving to a higher state.
-            if (m_readyState == HAVE_METADATA)
+            if (m_readyState == HAVE_METADATA) {
+                printf("### %s: break (A)\n", __PRETTY_FUNCTION__); fflush(stdout);
                 break;
+            }
         }
 
         if (m_readyState >= HAVE_CURRENT_DATA && oldState < HAVE_CURRENT_DATA) {
@@ -2817,12 +2837,16 @@ void HTMLMediaElement::setReadyState(MediaPlayer::ReadyState state)
             setShouldDelayLoadEvent(false);
 
             // If the new ready state is HAVE_FUTURE_DATA or HAVE_ENOUGH_DATA, then the relevant steps below must then be run also.
-            if (m_readyState < HAVE_FUTURE_DATA)
+            if (m_readyState < HAVE_FUTURE_DATA) {
+                printf("### %s: break (B)\n", __PRETTY_FUNCTION__); fflush(stdout);
                 break;
+            }
         }
 
-        if (!tracksAreReady)
+        if (!tracksAreReady) {
+            printf("### %s: break (C)\n", __PRETTY_FUNCTION__); fflush(stdout);
             break;
+        }
 
         if (m_readyState == HAVE_FUTURE_DATA && oldState <= HAVE_CURRENT_DATA) {
             scheduleEvent(eventNames().canplayEvent);
@@ -2830,6 +2854,7 @@ void HTMLMediaElement::setReadyState(MediaPlayer::ReadyState state)
             // If the element’s paused attribute is false, the user agent must queue a task to fire a simple event named playing at the element.
             if (!paused())
                 scheduleNotifyAboutPlaying();
+            printf("### %s: break (D)\n", __PRETTY_FUNCTION__); fflush(stdout);
             break;
         }
 
@@ -2843,6 +2868,7 @@ void HTMLMediaElement::setReadyState(MediaPlayer::ReadyState state)
                     scheduleNotifyAboutPlaying();
             }
 
+            printf("### %s: canplaythrough!\n", __PRETTY_FUNCTION__); fflush(stdout);
             // The user agent must queue a media element task given the media element to fire an event named canplaythrough at the element.
             scheduleEvent(eventNames().canplaythroughEvent);
 
@@ -2867,6 +2893,8 @@ void HTMLMediaElement::setReadyState(MediaPlayer::ReadyState state)
             }
         }
     } while (false);
+
+    printf("### %s: done\n", __PRETTY_FUNCTION__); fflush(stdout);
 
     // If we transition to the Future Data state and we're about to begin playing, ensure playback is actually permitted first,
     // honoring any playback denial reasons such as the requirement of a user gesture.
