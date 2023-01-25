@@ -643,6 +643,9 @@ private:
     RefPtr<GStreamerHolePunchHost> m_gstreamerHolePunchHost;
     Lock m_holePunchLock;
 #endif
+
+public:
+    gulong debugProbeIds[10] = { 0 };
 };
 
 }
