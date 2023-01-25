@@ -98,6 +98,7 @@ bool TrackBuffer::updateMinimumUpcomingPresentationTime()
 
 bool TrackBuffer::reenqueueMediaForTime(const MediaTime& time, const MediaTime& timeFudgeFactor)
 {
+    printf("### %s: time: %s, fudgeFactor: %s\n", __PRETTY_FUNCTION__, time.toString().utf8().data(), timeFudgeFactor.toString().utf8().data()); fflush(stdout);
     m_decodeQueue.clear();
 
     m_highestEnqueuedPresentationTime = MediaTime::invalidTime();

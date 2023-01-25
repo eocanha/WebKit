@@ -178,10 +178,12 @@ void SourceBufferPrivate::reenqueSamples(const AtomString& trackID)
 
 void SourceBufferPrivate::seekToTime(const MediaTime& time)
 {
+    printf("### %s: seekToTime()\n", __PRETTY_FUNCTION__); fflush(stdout);
     for (auto& trackBufferPair : m_trackBufferMap) {
         TrackBuffer& trackBuffer = trackBufferPair.value;
         const AtomString& trackID = trackBufferPair.key;
 
+        printf("### %s: Setting trackBuffer as needsReenqueuing\n", __PRETTY_FUNCTION__); fflush(stdout);
         trackBuffer.setNeedsReenqueueing(true);
         reenqueueMediaForTime(trackBuffer, trackID, time);
     }
@@ -275,12 +277,14 @@ void SourceBufferPrivate::provideMediaData(const AtomString& trackID)
 
 void SourceBufferPrivate::provideMediaData(TrackBuffer& trackBuffer, const AtomString& trackID)
 {
-    if (!m_isAttached || isSeeking())
+    if (!m_isAttached || isSeeking()) {
+        printf("### %s: provideMediaData(): Early return. m_isAttached: %s, isSeeking(): %s\n", __PRETTY_FUNCTION__, boolForPrinting(m_isAttached), boolForPrinting(isSeeking())); fflush(stdout);
         return;
+    }
 
-#if !RELEASE_LOG_DISABLED
+//#if !RELEASE_LOG_DISABLED
     unsigned enqueuedSamples = 0;
-#endif
+//#endif
 
     if (trackBuffer.needsMinimumUpcomingPresentationTimeUpdating() && canSetMinimumUpcomingPresentationTime(trackID)) {
         trackBuffer.setMinimumEnqueuedPresentationTime(MediaTime::invalidTime());
@@ -290,6 +294,7 @@ void SourceBufferPrivate::provideMediaData(TrackBuffer& trackBuffer, const AtomS
     while (!trackBuffer.decodeQueue().empty()) {
         if (!isReadyForMoreSamples(trackID)) {
             DEBUG_LOG(LOGIDENTIFIER, "bailing early, track id ", trackID, " is not ready for more data");
+            printf("### %s: bailing early, track id %s is not ready for more data\n", __PRETTY_FUNCTION__, trackID.string().utf8().data()); fflush(stdout);
             notifyClientWhenReadyForMoreSamples(trackID);
             break;
         }
@@ -301,6 +306,7 @@ void SourceBufferPrivate::provideMediaData(TrackBuffer& trackBuffer, const AtomS
 
         if (sample->decodeTime() > trackBuffer.enqueueDiscontinuityBoundary()) {
             DEBUG_LOG(LOGIDENTIFIER, "bailing early because of unbuffered gap, new sample: ", sample->decodeTime(), " >= the current discontinuity boundary: ", trackBuffer.enqueueDiscontinuityBoundary());
+            printf("### %s: breaking because of discontinuity\n", __PRETTY_FUNCTION__); fflush(stdout);
             break;
         }
 
@@ -315,25 +321,32 @@ void SourceBufferPrivate::provideMediaData(TrackBuffer& trackBuffer, const AtomS
         trackBuffer.setEnqueueDiscontinuityBoundary(sample->decodeTime() + sample->duration() + discontinuityTolerance);
 
         enqueueSample(sample.releaseNonNull(), trackID);
-#if !RELEASE_LOG_DISABLED
+//#if !RELEASE_LOG_DISABLED
         ++enqueuedSamples;
-#endif
+//#endif
     }
 
     updateMinimumUpcomingPresentationTime(trackBuffer, trackID);
 
-#if !RELEASE_LOG_DISABLED
+//#if !RELEASE_LOG_DISABLED
     DEBUG_LOG(LOGIDENTIFIER, "enqueued ", enqueuedSamples, " samples, ", static_cast<uint64_t>(trackBuffer.decodeQueue().size()), " remaining");
-#endif
+    printf("### %s: enqueued %u samples, %u remaining\n", __PRETTY_FUNCTION__, enqueuedSamples, static_cast<uint64_t>(trackBuffer.decodeQueue().size())); fflush(stdout);
+//#endif
 
     trySignalAllSamplesInTrackEnqueued(trackBuffer, trackID);
 }
 
 void SourceBufferPrivate::reenqueueMediaForTime(TrackBuffer& trackBuffer, const AtomString& trackID, const MediaTime& time)
 {
+    printf("### %s: reenqueueMediaForTime(): trackID: %s, time: %s\n", __PRETTY_FUNCTION__, trackID.string().utf8().data(), time.toString().utf8().data()); fflush(stdout);
+
     flush(trackID);
-    if (trackBuffer.reenqueueMediaForTime(time, timeFudgeFactor()))
+    if (trackBuffer.reenqueueMediaForTime(time, timeFudgeFactor())) {
+        printf("### %s: reenqueueMediaForTime(): trackBuffer.reenqueueMediaForTime() returned true, calling provideMediaData()\n", __PRETTY_FUNCTION__); fflush(stdout);
         provideMediaData(trackBuffer, trackID);
+    } else {
+        printf("### %s: reenqueueMediaForTime(): trackBuffer.reenqueueMediaForTime() returned false\n", __PRETTY_FUNCTION__); fflush(stdout);
+    }
 }
 
 void SourceBufferPrivate::reenqueueMediaIfNeeded(const MediaTime& currentTime)

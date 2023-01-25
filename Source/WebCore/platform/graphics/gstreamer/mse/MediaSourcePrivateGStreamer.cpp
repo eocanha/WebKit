@@ -140,6 +140,7 @@ void MediaSourcePrivateGStreamer::seekCompleted()
     // the samples for `currentTime` have been fed. This doesn't mean the seek is complete for the player, as
     // they still have to be decoded and preroll has to occur before we let the "seeked" event happen.
     // See MediaPlayerPrivateGStreamerMSE::asyncStateChangeDone().
+    GST_DEBUG("MediaSourcePrivateGStreamer(%p) - seekCompleted()", this);
 }
 
 MediaTime MediaSourcePrivateGStreamer::duration() const

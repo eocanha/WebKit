@@ -183,6 +183,7 @@ std::unique_ptr<PlatformTimeRanges> MediaSource::buffered() const
 
 void MediaSource::seekToTime(const MediaTime& time)
 {
+    printf("### %s: time: %s\n", __PRETTY_FUNCTION__, time.toString().utf8().data()); fflush(stdout);
     if (isClosed())
         return;
 
@@ -198,14 +199,17 @@ void MediaSource::seekToTime(const MediaTime& time)
     // media data for the new playback position is available, and, if it is, until it has decoded enough data
     // to play back that position" step of the seek algorithm:
     // ↳ If new playback position is not in any TimeRange of HTMLMediaElement.buffered
+    printf("### %s: hasBufferedTime(): %s\n", __PRETTY_FUNCTION__, boolForPrinting(hasBufferedTime(time))); fflush(stdout);
     if (!hasBufferedTime(time)) {
         // 1. If the HTMLMediaElement.readyState attribute is greater than HAVE_METADATA,
         // then set the HTMLMediaElement.readyState attribute to HAVE_METADATA.
+        printf("### %s: Setting readyState to HaveMetadata\n", __PRETTY_FUNCTION__); fflush(stdout);
         m_private->setReadyState(MediaPlayer::ReadyState::HaveMetadata);
 
         // 2. The media element waits until an appendBuffer() or an appendStream() call causes the coded
         // frame processing algorithm to set the HTMLMediaElement.readyState attribute to a value greater
         // than HAVE_METADATA.
+        printf("### %s: waitForSeekCompleted()\n", __PRETTY_FUNCTION__); fflush(stdout);
         m_private->waitForSeekCompleted();
         return;
     }
@@ -216,6 +220,7 @@ void MediaSource::seekToTime(const MediaTime& time)
 #if !USE(GSTREAMER)
     m_private->waitForSeekCompleted();
 #endif
+    printf("### %s: completeSeek()\n", __PRETTY_FUNCTION__); fflush(stdout);
     completeSeek();
 }
 
@@ -238,10 +243,13 @@ void MediaSource::completeSeek()
     MediaTime pendingSeekTime = m_pendingSeekTime;
     m_pendingSeekTime = MediaTime::invalidTime();
     m_private->setIsSeeking(false);
-    for (auto& sourceBuffer : *m_activeSourceBuffers)
+    for (auto& sourceBuffer : *m_activeSourceBuffers) {
+        printf("### %s: Calling sourceBuffer->seekToTime()\n", __PRETTY_FUNCTION__); fflush(stdout);
         sourceBuffer->seekToTime(pendingSeekTime);
+    }
 
     // 4. Resume the seek algorithm at the "Await a stable state" step.
+    printf("### %s: seekCompleted()\n", __PRETTY_FUNCTION__); fflush(stdout);
     m_private->seekCompleted();
 
     monitorSourceBuffers();
@@ -340,6 +348,22 @@ bool MediaSource::hasBufferedTime(const MediaTime& time)
         return false;
 
     auto ranges = buffered();
+
+    StringPrintStream ps;
+    ranges->dump(ps);
+    printf("### %s: global buffered ranges: %s\n", __PRETTY_FUNCTION__, ps.toCString().data()); fflush(stdout);
+    ps.reset();
+    for (auto sb : *m_activeSourceBuffers) {
+        String sbId = String::fromUTF8("<unknown>");
+        if (sb->audioTracks().length())
+            sbId = sb->audioTracks().item(0)->id().string();
+        else if (sb->videoTracks().length())
+            sbId = sb->videoTracks().item(0)->id().string();
+        sb->bufferedInternal().ranges().dump(ps);
+        printf("### %s: SourceBuffer %s: %s\n", __PRETTY_FUNCTION__, sbId.utf8().data(), ps.toCString().data()); fflush(stdout);
+        ps.reset();
+    }
+
     if (!ranges->length())
         return false;
 

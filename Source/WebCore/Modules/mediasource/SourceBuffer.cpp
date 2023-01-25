@@ -447,6 +447,7 @@ void SourceBuffer::removedFromMediaSource()
 
 void SourceBuffer::seekToTime(const MediaTime& time)
 {
+    printf("### %s: seekToTime()\n", __PRETTY_FUNCTION__); fflush(stdout);
     ALWAYS_LOG(LOGIDENTIFIER, time);
     m_private->seekToTime(time);
 }
