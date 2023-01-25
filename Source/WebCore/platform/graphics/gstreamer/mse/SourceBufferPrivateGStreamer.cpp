@@ -84,6 +84,57 @@ SourceBufferPrivateGStreamer::SourceBufferPrivateGStreamer(MediaSourcePrivateGSt
 {
 }
 
+// DEBUG
+static void dumpDataToDisk(const unsigned char* data, unsigned length, SourceBufferPrivateGStreamer* sbPrivate)
+{
+    static WTF::String s = String::fromUTF8(std::getenv("DUMP_APPENDED_DATA"));
+
+    if (s.isEmpty())
+        return;
+
+    static const int N = 2;
+    static void *sourceBuffers[N] = { 0 };
+    static int counts[N] = { 0 };
+
+    int i;
+    // Locate our own slot or a free one
+    for (i = 0; i < N; i++) {
+        if (sourceBuffers[i] == sbPrivate || sourceBuffers[i] == 0) break;
+    }
+
+    // Slots exhausted, reset the whole array
+    if (i == N) {
+        for (i = 0; i < N; i++) {
+            sourceBuffers[i] = 0;
+            counts[i] = 0;
+        }
+        i = 0;
+    }
+
+    // Remember sourceBuffer if our slot is initialized for the first time
+    if (sourceBuffers[i] == 0)
+        sourceBuffers[i] = sbPrivate;
+
+    counts[i]++;
+
+    char cFileName[1024];
+    snprintf(cFileName, 1024, "/root/append-%d-%03d.mp4", i, counts[i]);
+
+    printf("### %s: %s, %zu bytes\n", __PRETTY_FUNCTION__, cFileName, (length / sizeof(unsigned char))); fflush(stdout);
+
+    FILE* f = fopen(cFileName, "w");
+    if (!f) {
+        printf("### %s: ERROR creating dump file %s\n", __PRETTY_FUNCTION__, cFileName); fflush(stdout);
+        return;
+    }
+
+    if (fwrite(data, sizeof(unsigned char), length, f) != (length / sizeof(unsigned char))) {
+        printf("### %s: ERROR writing to dump file\n", __PRETTY_FUNCTION__); fflush(stdout);
+    }
+
+    fclose(f);
+}
+
 void SourceBufferPrivateGStreamer::append(Vector<unsigned char>&& data)
 {
     ASSERT(isMainThread());
@@ -100,6 +151,8 @@ void SourceBufferPrivateGStreamer::append(Vector<unsigned char>&& data)
             delete static_cast<Vector<unsigned char>*>(data);
         }));
 
+    // DEBUG
+    dumpDataToDisk(bufferData, bufferLength, this);
     m_appendPipeline->pushNewBuffer(WTFMove(buffer));
 }
 
