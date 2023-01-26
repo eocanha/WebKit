@@ -35,6 +35,7 @@
 #include "MediaSampleGStreamer.h"
 #include "SourceBufferPrivateGStreamer.h"
 #include "VideoTrackPrivateGStreamer.h"
+#include <fnmatch.h>
 #include <functional>
 #include <gst/app/gstappsink.h>
 #include <gst/app/gstappsrc.h>
@@ -293,6 +294,64 @@ void AppendPipeline::handleNeedContextSyncMessage(GstMessage* message)
     m_playerPrivate->handleNeedContextMessage(message);
 }
 
+static const char* gst_state_to_string(GstState s) {
+    switch (s) {
+    case GST_STATE_NULL: return "NULL";
+    case GST_STATE_READY: return "READY";
+    case GST_STATE_PAUSED: return "PAUSED";
+    case GST_STATE_PLAYING: return "PLAYING";
+    case GST_STATE_VOID_PENDING: return "VOID";
+    default: return "(UNKNONW)";
+    }
+}
+
+
+// debugProbeId refers to an index in the debugProbeIds array.
+static void installOrUninstallProbeIfNeeded(AppendPipeline* ap, const char* elementNamePattern, const char* padName, GstState installState, uint debugProbeId, GstMessage* message)
+{
+    if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_STATE_CHANGED
+        && !fnmatch(elementNamePattern, GST_MESSAGE_SRC_NAME(message), 0)) {
+        gulong& probeId = ap->debugProbeIds[debugProbeId];
+        GstElement* element = GST_ELEMENT(GST_MESSAGE_SRC(message));
+        GstState currentState, newState;
+
+        gst_message_parse_state_changed(message, &currentState, &newState, nullptr);
+
+        if (currentState == static_cast<GstState>(installState-1) && newState == installState) {
+            GRefPtr<GstPad> pad = adoptGRef(gst_element_get_static_pad(element, padName));
+            if (!pad && !probeId) {
+                const gchar* elementName = GST_ELEMENT_NAME(element);
+                printf("### %s: No pad! %s:%s\n", __PRETTY_FUNCTION__, elementName, padName); fflush(stdout);
+            }
+            if (pad && !probeId) {
+                GRefPtr<GstCaps> caps = adoptGRef(gst_pad_get_current_caps(pad.get()));
+                GUniquePtr<gchar> strcaps(gst_caps_to_string(caps.get()));
+                const gchar* padName = GST_PAD_NAME(pad.get());
+                const gchar* elementName = GST_ELEMENT_NAME(element);
+                printf("### %s: Adding probe to pad %s:%s: (caps) %s\n", __PRETTY_FUNCTION__, elementName, padName, strcaps.get()); fflush(stdout);
+                probeId = gst_pad_add_probe(pad.get(), GST_PAD_PROBE_TYPE_BUFFER,
+                    [] (GstPad* pad, GstPadProbeInfo* info, gpointer) -> GstPadProbeReturn {
+                        GstBuffer *buffer = GST_BUFFER(info->data);
+                        const gchar* padName = GST_PAD_NAME(pad);
+                        const gchar* elementName = GST_ELEMENT_NAME(GST_PAD_PARENT(pad));
+                        printf("### %s:%s: PTS=%" GST_TIME_FORMAT ", DUR=%" GST_TIME_FORMAT "\n", elementName, padName, GST_TIME_ARGS(GST_BUFFER_PTS(buffer)), GST_TIME_ARGS(GST_BUFFER_DURATION(buffer))); fflush(stdout);
+                        return GST_PAD_PROBE_OK;
+                    }, nullptr, nullptr);
+            }
+        } else if (currentState == static_cast<GstState>(installState+1) && newState == installState) {
+            GRefPtr<GstPad> pad = adoptGRef(gst_element_get_static_pad(element, padName));
+            if (pad && probeId) {
+                const gchar* padName = GST_PAD_NAME(pad.get());
+                const gchar* elementName = GST_ELEMENT_NAME(element);
+                printf("### %s: Removing probe from pad %s:%s\n", __PRETTY_FUNCTION__, elementName, padName); fflush(stdout);
+                gst_pad_remove_probe(pad.get(), probeId);
+                probeId = 0;
+            }
+        }
+    }
+
+}
+
 void AppendPipeline::handleStateChangeMessage(GstMessage* message)
 {
     ASSERT(isMainThread());
@@ -311,6 +370,23 @@ void AppendPipeline::handleStateChangeMessage(GstMessage* message)
             gst_element_state_get_name(newState)).utf8();
         GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(m_pipeline.get()), GST_DEBUG_GRAPH_SHOW_ALL, dotFileName.data());
     }
+
+    // Enable this when needed.
+    bool printStateChanges = false;
+
+    if (printStateChanges && GST_MESSAGE_TYPE(message) == GST_MESSAGE_STATE_CHANGED) {
+        GstState currentState;
+        GstState newState;
+        GstState pendingState;
+        gst_message_parse_state_changed(message, &currentState, &newState, &pendingState);
+        printf("!!! %s: %s --> %s (%s pending)\n", GST_MESSAGE_SRC_NAME(message), gst_state_to_string(currentState), gst_state_to_string(newState), gst_state_to_string(pendingState)); fflush(stdout);
+    }
+
+    uint debugProbeId = 0;
+
+    // Place more installOrUninstallProbeIfNeeded() calls here. Wildcards can be used to match element names.
+    //installOrUninstallProbeIfNeeded(this, "A0_parser", "sink", GST_STATE_PLAYING, debugProbeId++, message);
+    //installOrUninstallProbeIfNeeded(this, "A0_parser", "src", GST_STATE_PLAYING, debugProbeId++, message);
 }
 
 std::tuple<GRefPtr<GstCaps>, AppendPipeline::StreamType, FloatSize> AppendPipeline::parseDemuxerSrcPadCaps(GstCaps* demuxerSrcPadCaps)

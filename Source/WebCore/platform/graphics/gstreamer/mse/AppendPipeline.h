@@ -173,6 +173,9 @@ private:
 #endif
 
     AbortableTaskQueue m_taskQueue;
+
+public:
+    gulong debugProbeIds[10] = { 0 };
 };
 
 } // namespace WebCore.
