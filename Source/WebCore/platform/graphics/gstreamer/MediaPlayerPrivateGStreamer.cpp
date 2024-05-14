@@ -424,6 +424,23 @@ bool MediaPlayerPrivateGStreamer::isPipelineWaitingPreroll() const
 
 void MediaPlayerPrivateGStreamer::play()
 {
+    static bool onlyAllowFirstPlay = false;
+    static std::once_flag once;
+    std::call_once(once, []() {
+        auto s = String::fromLatin1(std::getenv("DEBUG_ONLY_ALLOW_FIRST_PLAY"));
+        if (!s.isEmpty()) {
+            String value = s.stripWhiteSpace().convertToLowercaseWithoutLocale();
+            onlyAllowFirstPlay = (value == "1"_s || value == "t"_s || value == "true"_s);
+        }
+    });
+
+    static int timesCalled = 0;
+    timesCalled++;
+    if (onlyAllowFirstPlay && timesCalled > 1) {
+        GST_INFO("!!!! REFUSING to play() a %dth time FOR DEBUGGING PURPOSES !!!!", timesCalled);
+        return;
+    }
+
     if (isMediaStreamPlayer()) {
         m_pausedTime = MediaTime::invalidTime();
         if (m_startTime.isInvalid())
@@ -453,6 +470,23 @@ void MediaPlayerPrivateGStreamer::play()
 
 void MediaPlayerPrivateGStreamer::pause()
 {
+    static bool onlyAllowFirstPlay = false;
+    static std::once_flag once;
+    std::call_once(once, []() {
+        auto s = String::fromLatin1(std::getenv("DEBUG_ONLY_ALLOW_FIRST_PLAY"));
+        if (!s.isEmpty()) {
+            String value = s.stripWhiteSpace().convertToLowercaseWithoutLocale();
+            onlyAllowFirstPlay = (value == "1"_s || value == "t"_s || value == "true"_s);
+        }
+    });
+
+    static int timesCalled = 0;
+    timesCalled++;
+    if (onlyAllowFirstPlay && timesCalled > 0) {
+        GST_INFO("!!!! REFUSING to pause() a %dth time FOR DEBUGGING PURPOSES !!!!", timesCalled);
+        return;
+    }
+
     if (isMediaStreamPlayer())
         m_pausedTime = currentMediaTime();
 
