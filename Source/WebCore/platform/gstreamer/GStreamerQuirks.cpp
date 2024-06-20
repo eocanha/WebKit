@@ -274,6 +274,15 @@ bool GStreamerQuirksManager::shouldParseIncomingLibWebRTCBitStream() const
     return true;
 }
 
+bool GStreamerQuirksManager::needsPlaypumpBufferingLogic() const
+{
+    for (auto& quirk : m_quirks) {
+        if (quirk->needsPlaypumpBufferingLogic())
+            return true;
+    }
+    return false;
+}
+
 #undef GST_CAT_DEFAULT
 
 } // namespace WebCore
