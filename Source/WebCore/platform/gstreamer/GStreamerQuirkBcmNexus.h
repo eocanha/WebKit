@@ -34,6 +34,7 @@ public:
     std::optional<bool> isHardwareAccelerated(GstElementFactory*) final;
     std::optional<GstElementFactoryListType> audioVideoDecoderFactoryListType() const final { return GST_ELEMENT_FACTORY_TYPE_PARSER; }
     Vector<String> disallowedWebAudioDecoders() const final { return m_disallowedWebAudioDecoders; }
+    bool needsPlaypumpBufferingLogic() const { return true; }
 
 private:
     Vector<String> m_disallowedWebAudioDecoders;
