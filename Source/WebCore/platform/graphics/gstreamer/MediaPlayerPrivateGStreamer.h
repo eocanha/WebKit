@@ -262,7 +262,9 @@ protected:
     };
 
     enum class PlaybackRatePausedState {
-        ManuallyPaused, // Initialization or user explicitly paused. This takes preference over RatePaused. You don't
+        InitiallyPaused, // Initialization. This takes preference over RatePaused. You don't
+                         // transition from Initially to Rate Paused unless there is a play while rate == 0.
+        ManuallyPaused, // User explicitly paused. This takes preference over RatePaused. You don't
                         // transition from Manually to Rate Paused unless there is a play while rate == 0.
         RatePaused, // Pipeline was playing and rate was set to zero.
         ShouldMoveToPlaying, // Pipeline was paused because of zero rate and it should be playing. This is not a
@@ -378,7 +380,7 @@ protected:
     // https://bugs.webkit.org/show_bug.cgi?id=260385
     bool m_isPaused { true };
     float m_playbackRate { 1 };
-    PlaybackRatePausedState m_playbackRatePausedState { PlaybackRatePausedState::ManuallyPaused };
+    PlaybackRatePausedState m_playbackRatePausedState { PlaybackRatePausedState::InitiallyPaused };
     GstState m_currentState { GST_STATE_NULL };
     GstState m_oldState { GST_STATE_NULL };
     GstState m_requestedState { GST_STATE_VOID_PENDING };
