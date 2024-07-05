@@ -1306,37 +1306,37 @@ int MediaPlayerPrivateGStreamer::correctBufferingPercentage(int originalBufferin
     // (only when using in-memory buffering), so we get more realistic percentages.
     int correctedBufferingPercentage1 = originalBufferingPercentage;
     int correctedBufferingPercentage2 = originalBufferingPercentage;
-    guint maxSizeBytes = 0;
+    unsigned int maxSizeBytes = 0;
 
     // We don't trust the buffering percentage when it's 0, better rely on current-level-bytes and compute a new buffer level accordingly.
     g_object_get(m_queue2.get(), "max-size-bytes", &maxSizeBytes, nullptr);
     if (!originalBufferingPercentage && m_queue2) {
-        guint currentLevelBytes = 0;
+        unsigned int currentLevelBytes = 0;
         g_object_get(m_queue2.get(), "current-level-bytes", &currentLevelBytes, nullptr);
-        correctedBufferingPercentage1 = currentLevelBytes > maxSizeBytes ? 100 : (int)(currentLevelBytes * 100 / maxSizeBytes);
+        correctedBufferingPercentage1 = currentLevelBytes > maxSizeBytes ? 100 : static_cast<int>(currentLevelBytes * 100 / maxSizeBytes);
     }
 
-    guint playpumpBufferedBytes = 0;
+    unsigned int playpumpBufferedBytes = 0;
     if (m_vidfilter)
         g_object_get(GST_OBJECT(m_vidfilter.get()), "buffered-bytes", &playpumpBufferedBytes, nullptr);
 
-    guint multiqueueBufferedBytes = 0;
+    unsigned int multiqueueBufferedBytes = 0;
     if (m_multiqueue) {
         GUniqueOutPtr<GstStructure> stats;
         g_object_get(m_multiqueue.get(), "stats", &stats.outPtr(), nullptr);
         const GValue* queues = gst_structure_get_value(stats.get(), "queues");
-        guint size = gst_value_array_get_size(queues);
-        for (guint i = 0; i < size; i++) {
-            guint bytes = 0;
+        unsigned int size = gst_value_array_get_size(queues);
+        for (unsigned int i = 0; i < size; i++) {
+            unsigned int bytes = 0;
             if (gst_structure_get_uint(gst_value_get_structure(gst_value_array_get_value(queues, i)), "bytes", &bytes))
                 multiqueueBufferedBytes += bytes;
         }
     }
 
     // Current-level-bytes seems to be inacurate, so we compute its value from the buffering percentage.
-    size_t currentLevelBytes = (size_t)maxSizeBytes * (size_t)originalBufferingPercentage / (size_t)100
-        + (size_t)playpumpBufferedBytes + (size_t)multiqueueBufferedBytes;
-    correctedBufferingPercentage2 = currentLevelBytes > maxSizeBytes ? 100 : (int)(currentLevelBytes * 100 / maxSizeBytes);
+    size_t currentLevelBytes = static_cast<size_t>(maxSizeBytes) * static_cast<size_t>(originalBufferingPercentage) / static_cast<size_t>(100)
+        + static_cast<size_t>(playpumpBufferedBytes) + static_cast<size_t>(multiqueueBufferedBytes);
+    correctedBufferingPercentage2 = currentLevelBytes > maxSizeBytes ? 100 : static_cast<int>(currentLevelBytes * 100 / maxSizeBytes);
 
     if (correctedBufferingPercentage2 >= 100)
         m_streamBufferingLevelMovingAverage.reset(100);
@@ -1362,7 +1362,7 @@ bool MediaPlayerPrivateGStreamer::queryBufferingPercentage(GstBufferingMode& mod
 {
     GRefPtr<GstQuery> query = adoptGRef(gst_query_new_buffering(GST_FORMAT_PERCENT));
 
-    bool queryOk = false;
+    bool isQueryOk = false;
     const char* elementName = "<undefined>";
 
     bool shouldDownload = m_fillTimer.isActive();
@@ -1370,29 +1370,29 @@ bool MediaPlayerPrivateGStreamer::queryBufferingPercentage(GstBufferingMode& mod
     auto& quirksManager = GStreamerQuirksManager::singleton();
     if (quirksManager.isEnabled() && quirksManager.needsPlaypumpBufferingLogic()) {
         // In cases where we know for sure that queue2 is being used (stream mode), let's ask it directly.
-        if (!queryOk) {
-            queryOk = (!shouldDownload && m_queue2 && gst_element_query(m_queue2.get(), query.get()));
-            if (queryOk)
+        if (!isQueryOk) {
+            isQueryOk = (!shouldDownload && m_queue2 && gst_element_query(m_queue2.get(), query.get()));
+            if (isQueryOk)
                 elementName = "queue2";
         }
     }
 
-    if (!queryOk) {
-        queryOk = (m_audioSink && gst_element_query(m_audioSink.get(), query.get()));
-        if (queryOk)
+    if (!isQueryOk) {
+        isQueryOk = (m_audioSink && gst_element_query(m_audioSink.get(), query.get()));
+        if (isQueryOk)
             elementName = "audiosink";
     }
-    if (!queryOk) {
-        queryOk = (m_videoSink && gst_element_query(m_videoSink.get(), query.get()));
-        if (queryOk)
+    if (!isQueryOk) {
+        isQueryOk = (m_videoSink && gst_element_query(m_videoSink.get(), query.get()));
+        if (isQueryOk)
             elementName = "videosink";
     }
-    if (!queryOk) {
-        queryOk = gst_element_query(m_pipeline.get(), query.get());
-        if (queryOk)
+    if (!isQueryOk) {
+        isQueryOk = gst_element_query(m_pipeline.get(), query.get());
+        if (isQueryOk)
             elementName = "pipeline";
     }
-    if (!queryOk)
+    if (!isQueryOk)
         return false;
 
     percentage = 0;
@@ -2094,30 +2094,7 @@ void MediaPlayerPrivateGStreamer::handleMessage(GstMessage* message)
                 m_vidfilter = GST_ELEMENT(GST_MESSAGE_SRC(message));
 
                 // Also get the multiqueue (if there's one) attached to the vidfilter. We'll need it later to correct the buffering level.
-                GstPad* sinkPad = nullptr;
-                GstIterator* iter = gst_element_iterate_sink_pads(m_vidfilter.get());
-                bool done = false;
-                while (!done) {
-                    GValue item = G_VALUE_INIT;
-                    switch (gst_iterator_next(iter, &item)) {
-                    case GST_ITERATOR_OK: {
-                        sinkPad = static_cast<GstPad*>(g_value_get_object(&item));
-                        break;
-                    }
-                    case GST_ITERATOR_RESYNC:
-                        gst_iterator_resync(iter);
-                        break;
-                    case GST_ITERATOR_ERROR:
-                        FALLTHROUGH;
-                    case GST_ITERATOR_DONE:
-                        done = true;
-                        break;
-                    }
-                    g_value_unset(&item);
-                }
-                gst_iterator_free(iter);
-
-                if (sinkPad) {
+                for (auto* sinkPad : GstIteratorAdaptor<GstPad>(GUniquePtr<GstIterator>(gst_element_iterate_sink_pads(m_vidfilter.get())))) {
                     GRefPtr<GstPad> peerSrcPad = adoptGRef(gst_pad_get_peer(sinkPad));
                     if (peerSrcPad) {
                         GRefPtr<GstElement> peerElement = adoptGRef(GST_ELEMENT(gst_pad_get_parent(peerSrcPad.get())));
@@ -2126,6 +2103,7 @@ void MediaPlayerPrivateGStreamer::handleMessage(GstMessage* message)
                             && g_object_class_find_property(G_OBJECT_GET_CLASS(peerElement.get()), "stats"))
                             m_multiqueue = peerElement;
                     }
+                    break;
                 }
             } else if (currentState == GST_STATE_NULL && newState == GST_STATE_READY
                 && g_strstr_len(GST_MESSAGE_SRC_NAME(message), 6, "queue2")) {
@@ -2350,7 +2328,7 @@ void MediaPlayerPrivateGStreamer::processBufferingStats(GstMessage* message)
             percentage = correctBufferingPercentage(percentage);
     }
 
-    updateBufferingStatus(mode, double(percentage));
+    updateBufferingStatus(mode, static_cast<double>(percentage));
 }
 
 void MediaPlayerPrivateGStreamer::updateMaxTimeLoaded(double percentage)

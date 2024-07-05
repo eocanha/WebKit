@@ -548,33 +548,32 @@ private:
 
     class MovingAverage {
     public:
-        MovingAverage(const unsigned char length)
-            : m_length(length)
-            , m_values(new int[length]{}) {
+        MovingAverage(size_t length)
+            : m_values(length)
+        {
         }
 
-        ~MovingAverage() {
-            free(m_values);
-        }
-
-        void reset(int value) {
-            for (unsigned char i = 0; i < m_length; i++)
+        void reset(int value)
+        {
+            for (size_t i = 0; i < m_values.size(); i++)
                 m_values[i] = value;
         }
 
-        int accumulate(int value) {
-            int sum = 0;
-            for (unsigned char i = 1; i < m_length; i++) {
-                m_values[i-1] = m_values[i];
-                sum += m_values[i-1];
+        int accumulate(int value)
+        {
+            intmax_t sum = 0;
+            for (size_t i = 1; i < m_values.size(); i++) {
+                m_values[i - 1] = m_values[i];
+                sum += m_values[i - 1];
             }
-            m_values[m_length - 1] = value;
+            m_values[m_values.size() - 1] = value;
             sum += value;
-            return sum / m_length;
+            intmax_t result = sum / m_values.size();
+            ASSERT(result < std::numeric_limits<int>::max());
+            return result;
         }
     private:
-        const unsigned char m_length;
-        int* m_values;
+        Vector<int> m_values;
     };
 
     int correctBufferingPercentage(const int originalBufferingPercentage);
@@ -719,7 +718,7 @@ private:
     GRefPtr<GstElement> m_vidfilter;
     GRefPtr<GstElement> m_multiqueue;
     GRefPtr<GstElement> m_queue2;
-    MovingAverage m_streamBufferingLevelMovingAverage = MovingAverage(10);
+    MovingAverage m_streamBufferingLevelMovingAverage {10};
 };
 
 }
