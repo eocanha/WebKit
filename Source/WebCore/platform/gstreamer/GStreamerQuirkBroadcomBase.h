@@ -22,23 +22,20 @@
 
 #if USE(GSTREAMER)
 
-#include "GStreamerQuirkBroadcomBase.h"
+#include "GStreamerCommon.h"
 #include "GStreamerQuirks.h"
+#include "MediaPlayerPrivateGStreamer.h"
 
 namespace WebCore {
 
-class GStreamerQuirkBcmNexus final : public GStreamerQuirkBroadcomBase {
+class GStreamerQuirkBroadcomBase : public GStreamerQuirk {
 public:
-    GStreamerQuirkBcmNexus();
-    const char* identifier() final { return "BcmNexus"; }
+    GStreamerQuirkBroadcomBase();
 
-    std::optional<bool> isHardwareAccelerated(GstElementFactory*) final;
-    std::optional<GstElementFactoryListType> audioVideoDecoderFactoryListType() const final { return GST_ELEMENT_FACTORY_TYPE_PARSER; }
-    Vector<String> disallowedWebAudioDecoders() const final { return m_disallowedWebAudioDecoders; }
     bool needsBufferingPercentageCorrection() const { return true; }
-
-private:
-    Vector<String> m_disallowedWebAudioDecoders;
+    bool queryBufferingPercentage(MediaPlayerPrivateGStreamer*, const char*& elementName, GRefPtr<GstQuery>&) const;
+    int correctBufferingPercentage(MediaPlayerPrivateGStreamer*, int originalBufferingPercentage, GstBufferingMode) const;
+    void setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer*, GstState currentState, GstState newState, GstElement*) const;
 };
 
 } // namespace WebCore

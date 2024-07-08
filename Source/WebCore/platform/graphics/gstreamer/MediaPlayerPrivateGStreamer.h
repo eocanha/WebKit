@@ -524,6 +524,8 @@ private:
 
     void configureElementPlatformQuirks(GstElement*);
 
+    friend class GStreamerQuirkBroadcomBase;
+
     class MovingAverage {
     public:
         MovingAverage(size_t length)
@@ -554,7 +556,6 @@ private:
         Vector<int> m_values;
     };
 
-    int correctBufferingPercentage(const int originalBufferingPercentage);
     bool queryBufferingPercentage(GstBufferingMode&, int &percentage);
 
     void setPlaybinURL(const URL& urlString);

@@ -30,6 +30,8 @@
 
 namespace WebCore {
 
+class MediaPlayerPrivateGStreamer;
+
 enum class ElementRuntimeCharacteristics : uint8_t {
     IsMediaStream = 1 << 0,
     HasVideo = 1 << 1,
@@ -62,7 +64,10 @@ public:
     virtual Vector<String> disallowedWebAudioDecoders() const { return { }; }
     virtual unsigned getAdditionalPlaybinFlags() const { return 0; }
     virtual bool shouldParseIncomingLibWebRTCBitStream() const { return true; }
-    virtual bool needsPlaypumpBufferingLogic() const { return false; }
+    virtual bool needsBufferingPercentageCorrection() const { return false; }
+    virtual bool queryBufferingPercentage(MediaPlayerPrivateGStreamer*, const char*&, GRefPtr<GstQuery>&) const { return false; }
+    virtual int correctBufferingPercentage(MediaPlayerPrivateGStreamer*, int originalBufferingPercentage, GstBufferingMode) const { return originalBufferingPercentage; }
+    virtual void setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer*, GstState, GstState, GstElement*) const { }
 };
 
 class GStreamerHolePunchQuirk : public GStreamerQuirkBase {
@@ -108,7 +113,10 @@ public:
 
     bool shouldParseIncomingLibWebRTCBitStream() const;
 
-    bool needsPlaypumpBufferingLogic() const;
+    bool needsBufferingPercentageCorrection() const;
+    bool queryBufferingPercentage(MediaPlayerPrivateGStreamer*, const char*& elementName, GRefPtr<GstQuery>&) const;
+    int correctBufferingPercentage(MediaPlayerPrivateGStreamer*, int originalBufferingPercentage, GstBufferingMode) const;
+    void setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer*, GstState currentState, GstState newState, GstElement*) const;
 
 private:
     GStreamerQuirksManager(bool, bool);

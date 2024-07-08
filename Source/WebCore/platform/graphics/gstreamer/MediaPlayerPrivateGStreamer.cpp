@@ -579,9 +579,7 @@ bool MediaPlayerPrivateGStreamer::doSeek(const SeekTarget& target, float rate)
     if (!m_downloadBuffer && !m_isChangingRate) {
         GST_DEBUG_OBJECT(pipeline(), "[Buffering] Pausing pipeline, resetting buffering level to 0 and forcing m_isBuffering true before seeking on stream mode");
 
-        auto& quirksManager = GStreamerQuirksManager::singleton();
-        if (quirksManager.isEnabled() && quirksManager.needsPlaypumpBufferingLogic())
-            m_streamBufferingLevelMovingAverage.reset(0);
+        m_streamBufferingLevelMovingAverage.reset(0);
 
         // Make sure that m_isBuffering is set to true, so that when buffering completes it's set to false again and playback resumes.
         updateBufferingStatus(GST_BUFFERING_STREAM, 0.0, true);
@@ -1328,64 +1326,6 @@ void MediaPlayerPrivateGStreamer::commitLoad()
     updateStates();
 }
 
-int MediaPlayerPrivateGStreamer::correctBufferingPercentage(int originalBufferingPercentage)
-{
-    // The Nexus playpump buffers a lot of data. Let's add it as if it had been buffered by the GstQueue2
-    // (only when using in-memory buffering), so we get more realistic percentages.
-    int correctedBufferingPercentage1 = originalBufferingPercentage;
-    int correctedBufferingPercentage2 = originalBufferingPercentage;
-    unsigned int maxSizeBytes = 0;
-
-    // We don't trust the buffering percentage when it's 0, better rely on current-level-bytes and compute a new buffer level accordingly.
-    g_object_get(m_queue2.get(), "max-size-bytes", &maxSizeBytes, nullptr);
-    if (!originalBufferingPercentage && m_queue2) {
-        unsigned int currentLevelBytes = 0;
-        g_object_get(m_queue2.get(), "current-level-bytes", &currentLevelBytes, nullptr);
-        correctedBufferingPercentage1 = currentLevelBytes > maxSizeBytes ? 100 : static_cast<int>(currentLevelBytes * 100 / maxSizeBytes);
-    }
-
-    unsigned int playpumpBufferedBytes = 0;
-    if (m_vidfilter)
-        g_object_get(GST_OBJECT(m_vidfilter.get()), "buffered-bytes", &playpumpBufferedBytes, nullptr);
-
-    unsigned int multiqueueBufferedBytes = 0;
-    if (m_multiqueue) {
-        GUniqueOutPtr<GstStructure> stats;
-        g_object_get(m_multiqueue.get(), "stats", &stats.outPtr(), nullptr);
-        const GValue* queues = gst_structure_get_value(stats.get(), "queues");
-        unsigned int size = gst_value_array_get_size(queues);
-        for (unsigned int i = 0; i < size; i++) {
-            unsigned int bytes = 0;
-            if (gst_structure_get_uint(gst_value_get_structure(gst_value_array_get_value(queues, i)), "bytes", &bytes))
-                multiqueueBufferedBytes += bytes;
-        }
-    }
-
-    // Current-level-bytes seems to be inacurate, so we compute its value from the buffering percentage.
-    size_t currentLevelBytes = static_cast<size_t>(maxSizeBytes) * static_cast<size_t>(originalBufferingPercentage) / static_cast<size_t>(100)
-        + static_cast<size_t>(playpumpBufferedBytes) + static_cast<size_t>(multiqueueBufferedBytes);
-    correctedBufferingPercentage2 = currentLevelBytes > maxSizeBytes ? 100 : static_cast<int>(currentLevelBytes * 100 / maxSizeBytes);
-
-    if (correctedBufferingPercentage2 >= 100)
-        m_streamBufferingLevelMovingAverage.reset(100);
-    int averagedBufferingPercentage = m_streamBufferingLevelMovingAverage.accumulate(correctedBufferingPercentage2);
-
-#ifndef GST_DISABLE_GST_DEBUG
-    const char* extraElements = m_multiqueue ? "playpump and multiqueue" : "playpump";
-    if (!originalBufferingPercentage) {
-        GST_DEBUG("[Buffering] Buffering: mode: GST_BUFFERING_STREAM, status: %d%% (corrected to %d%% with current-level-bytes, "
-            "to %d%% with %s content, and to %d%% with moving average).", originalBufferingPercentage, correctedBufferingPercentage1,
-            correctedBufferingPercentage2, extraElements, averagedBufferingPercentage);
-    } else {
-        GST_DEBUG("[Buffering] Buffering: mode: GST_BUFFERING_STREAM, status: %d%% (corrected to %d%% with %s content and "
-            "to %d%% with moving average).", originalBufferingPercentage, correctedBufferingPercentage2, extraElements,
-            averagedBufferingPercentage);
-    }
-#endif
-
-    return averagedBufferingPercentage;
-}
-
 bool MediaPlayerPrivateGStreamer::queryBufferingPercentage(GstBufferingMode& mode, int &percentage)
 {
     GRefPtr<GstQuery> query = adoptGRef(gst_query_new_buffering(GST_FORMAT_PERCENT));
@@ -1393,17 +1333,9 @@ bool MediaPlayerPrivateGStreamer::queryBufferingPercentage(GstBufferingMode& mod
     bool isQueryOk = false;
     const char* elementName = "<undefined>";
 
-    bool shouldDownload = m_fillTimer.isActive();
-
     auto& quirksManager = GStreamerQuirksManager::singleton();
-    if (quirksManager.isEnabled() && quirksManager.needsPlaypumpBufferingLogic()) {
-        // In cases where we know for sure that queue2 is being used (stream mode), let's ask it directly.
-        if (!isQueryOk) {
-            isQueryOk = (!shouldDownload && m_queue2 && gst_element_query(m_queue2.get(), query.get()));
-            if (isQueryOk)
-                elementName = "queue2";
-        }
-    }
+    if (!isQueryOk)
+        isQueryOk = quirksManager.isEnabled() && quirksManager.queryBufferingPercentage(this, elementName, query);
 
     if (!isQueryOk) {
         isQueryOk = (m_audioSink && gst_element_query(m_audioSink.get(), query.get()));
@@ -2145,35 +2077,9 @@ void MediaPlayerPrivateGStreamer::handleMessage(GstMessage* message)
             }
         }
 
-        if (quirksManager.isEnabled() && quirksManager.needsPlaypumpBufferingLogic()) {
-            if (currentState == GST_STATE_NULL && newState == GST_STATE_READY
-                && g_strstr_len(GST_MESSAGE_SRC_NAME(message), 13, "brcmvidfilter")) {
-                m_vidfilter = GST_ELEMENT(GST_MESSAGE_SRC(message));
-
-                // Also get the multiqueue (if there's one) attached to the vidfilter. We'll need it later to correct the buffering level.
-                for (auto* sinkPad : GstIteratorAdaptor<GstPad>(GUniquePtr<GstIterator>(gst_element_iterate_sink_pads(m_vidfilter.get())))) {
-                    GRefPtr<GstPad> peerSrcPad = adoptGRef(gst_pad_get_peer(sinkPad));
-                    if (peerSrcPad) {
-                        GRefPtr<GstElement> peerElement = adoptGRef(GST_ELEMENT(gst_pad_get_parent(peerSrcPad.get())));
-                        // The multiqueue reference is useless if we can't access its stats (on older GStreamer versions).
-                        if (peerElement && g_strstr_len(GST_ELEMENT_NAME(peerElement.get()), 10, "multiqueue")
-                            && g_object_class_find_property(G_OBJECT_GET_CLASS(peerElement.get()), "stats"))
-                            m_multiqueue = peerElement;
-                    }
-                    break;
-                }
-            } else if (currentState == GST_STATE_NULL && newState == GST_STATE_READY
-                && g_strstr_len(GST_MESSAGE_SRC_NAME(message), 6, "queue2")) {
-                m_queue2 = GST_ELEMENT(GST_MESSAGE_SRC(message));
-            } else if (currentState == GST_STATE_READY && newState == GST_STATE_NULL
-                && g_strstr_len(GST_MESSAGE_SRC_NAME(message), 13, "brcmvidfilter")) {
-                m_vidfilter = nullptr;
-                m_multiqueue = nullptr;
-            } else if (currentState == GST_STATE_READY && newState == GST_STATE_NULL
-                && g_strstr_len(GST_MESSAGE_SRC_NAME(message), 6, "queue2")) {
-                m_queue2 = nullptr;
-            }
-        }
+        //!!! GET THIS CODE INTO THE QUIRKS AS setupBufferingPercentageCorrection() OR SOMETHING LIKE THAT
+        if (quirksManager.isEnabled() && quirksManager.needsBufferingPercentageCorrection())
+            quirksManager.setupBufferingPercentageCorrection(this, currentState, newState, GST_ELEMENT(GST_MESSAGE_SRC(message)));
 
         if (!messageSourceIsPlaybin || m_isDelayingLoad)
             break;
@@ -2352,12 +2258,8 @@ void MediaPlayerPrivateGStreamer::processBufferingStats(GstMessage* message)
     gst_message_parse_buffering(message, &percentage);
 
     auto& quirksManager = GStreamerQuirksManager::singleton();
-    if (quirksManager.isEnabled() && quirksManager.needsPlaypumpBufferingLogic()) {
-        // The Nexus playpump buffers a lot of data. Let's add it as if it had been buffered by the GstQueue2
-        // (only when using in-memory buffering), so we get more realistic percentages.
-        if (mode == GST_BUFFERING_STREAM && m_vidfilter)
-            percentage = correctBufferingPercentage(percentage);
-    }
+    if (quirksManager.isEnabled() && quirksManager.needsBufferingPercentageCorrection())
+        percentage = quirksManager.correctBufferingPercentage(this, percentage, mode);
 
     updateBufferingStatus(mode, static_cast<double>(percentage));
 }

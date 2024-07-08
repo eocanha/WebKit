@@ -23,11 +23,13 @@
 #if USE(GSTREAMER)
 
 #include "GStreamerCommon.h"
+#include "GStreamerQuirkBroadcomBase.h"
 #include "GStreamerQuirks.h"
+#include "MediaPlayerPrivateGStreamer.h"
 
 namespace WebCore {
 
-class GStreamerQuirkBroadcom final : public GStreamerQuirk {
+class GStreamerQuirkBroadcom final : public GStreamerQuirkBroadcomBase {
 public:
     GStreamerQuirkBroadcom();
     const char* identifier() final { return "Broadcom"; }
@@ -38,7 +40,6 @@ public:
     Vector<String> disallowedWebAudioDecoders() const final { return m_disallowedWebAudioDecoders; }
     unsigned getAdditionalPlaybinFlags() const final { return getGstPlayFlag("text") | getGstPlayFlag("native-audio"); }
     bool shouldParseIncomingLibWebRTCBitStream() const final { return false; }
-    bool needsPlaypumpBufferingLogic() const { return true; }
 
 private:
     Vector<String> m_disallowedWebAudioDecoders;
