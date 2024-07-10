@@ -28,7 +28,7 @@ namespace WebCore {
 
 class GStreamerHolePunchQuirkBcmNexus final : public GStreamerHolePunchQuirk {
 public:
-    const char* identifier() final { return "BcmNexusHolePunch"; }
+    const char* identifier() const final { return "BcmNexusHolePunch"; }
 
     // NOTE: We don't override createHolePunchVideoSink here because autovideosink takes care of
     // auto-plugging the right sink.

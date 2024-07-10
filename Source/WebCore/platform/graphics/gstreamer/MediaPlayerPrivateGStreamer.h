@@ -279,6 +279,9 @@ public:
         MediaPlayerPrivateGStreamer* m_playerPrivate;
     };
     void setVideoRectangle(const IntRect& rect);
+    bool shouldDownload() { return m_fillTimer.isActive(); }
+    void setQuirkState(GStreamerQuirkBase::GStreamerQuirkState&& state) { m_quirkState = WTFMove(state); }
+    GStreamerQuirkBase::GStreamerQuirkState& quirkState() { return m_quirkState; }
 
 protected:
     enum MainThreadNotification {
@@ -292,15 +295,20 @@ protected:
     };
 
     enum class PlaybackRatePausedState {
-        InitiallyPaused, // Initialization. This takes preference over RatePaused. You don't
-                         // transition from Initially to Rate Paused unless there is a play while rate == 0.
-        ManuallyPaused, // User explicitly paused. This takes preference over RatePaused. You don't
-                        // transition from Manually to Rate Paused unless there is a play while rate == 0.
-        RatePaused, // Pipeline was playing and rate was set to zero.
-        ShouldMoveToPlaying, // Pipeline was paused because of zero rate and it should be playing. This is not a
-                             // definitive state, just an operational transition from RatePaused to Playing to keep the
-                             // pipeline state changes contained in updateStates.
-        Playing, // Pipeline is playing and it should be.
+        // Initialization. This takes preference over RatePaused. You don't
+        // transition from Initially to Rate Paused unless there is a play while rate == 0.
+        InitiallyPaused,
+        // User explicitly paused. This takes preference over RatePaused. You don't
+        // transition from Manually to Rate Paused unless there is a play while rate == 0.
+        ManuallyPaused,
+        // Pipeline was playing and rate was set to zero.
+        RatePaused,
+        // Pipeline was paused because of zero rate and it should be playing. This is not a
+        // definitive state, just an operational transition from RatePaused to Playing to keep the
+        // pipeline state changes contained in updateStates.
+        ShouldMoveToPlaying,
+        // Pipeline is playing and it should be.
+        Playing,
     };
 
     enum class ChangePipelineStateResult {
@@ -546,37 +554,6 @@ private:
 
     void configureElementPlatformQuirks(GstElement*);
 
-    class MovingAverage {
-    public:
-        MovingAverage(size_t length)
-            : m_values(length)
-        {
-        }
-
-        void reset(int value)
-        {
-            for (size_t i = 0; i < m_values.size(); i++)
-                m_values[i] = value;
-        }
-
-        int accumulate(int value)
-        {
-            intmax_t sum = 0;
-            for (size_t i = 1; i < m_values.size(); i++) {
-                m_values[i - 1] = m_values[i];
-                sum += m_values[i - 1];
-            }
-            m_values[m_values.size() - 1] = value;
-            sum += value;
-            intmax_t result = sum / m_values.size();
-            ASSERT(result < std::numeric_limits<int>::max());
-            return result;
-        }
-    private:
-        Vector<int> m_values;
-    };
-
-    int correctBufferingPercentage(const int originalBufferingPercentage);
     bool queryBufferingPercentage(GstBufferingMode&, int &percentage);
 
     void setPlaybinURL(const URL& urlString);
@@ -715,10 +692,7 @@ private:
     MediaTime m_pausedTime;
 
     RefPtr<GStreamerQuirksManager> m_quirksManagerForTesting;
-    GRefPtr<GstElement> m_vidfilter;
-    GRefPtr<GstElement> m_multiqueue;
-    GRefPtr<GstElement> m_queue2;
-    MovingAverage m_streamBufferingLevelMovingAverage {10};
+    GStreamerQuirkBase::GStreamerQuirkState m_quirkState;
 };
 
 }

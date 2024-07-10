@@ -29,7 +29,7 @@ namespace WebCore {
 class GStreamerQuirkAmLogic final : public GStreamerQuirk {
 public:
     GStreamerQuirkAmLogic();
-    const char* identifier() final { return "AmLogic"; }
+    const char* identifier() const final { return "AmLogic"; }
 
     GstElement* createWebAudioSink() final;
     void configureElement(GstElement*, const OptionSet<ElementRuntimeCharacteristics>&) final;

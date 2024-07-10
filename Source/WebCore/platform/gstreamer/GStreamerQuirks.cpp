@@ -309,13 +309,44 @@ bool GStreamerQuirksManager::shouldParseIncomingLibWebRTCBitStream() const
     return true;
 }
 
-bool GStreamerQuirksManager::needsPlaypumpBufferingLogic() const
+bool GStreamerQuirksManager::needsBufferingPercentageCorrection() const
 {
     for (auto& quirk : m_quirks) {
-        if (quirk->needsPlaypumpBufferingLogic())
+        if (quirk->needsBufferingPercentageCorrection())
             return true;
     }
     return false;
+}
+
+bool GStreamerQuirksManager::queryBufferingPercentage(MediaPlayerPrivateGStreamer* mediaPlayerPrivate, const char*& elementName, GRefPtr<GstQuery>& query) const
+{
+    for (auto& quirk : m_quirks) {
+        if (quirk->queryBufferingPercentage(mediaPlayerPrivate, elementName, query))
+            return true;
+    }
+    return false;
+}
+
+int GStreamerQuirksManager::correctBufferingPercentage(MediaPlayerPrivateGStreamer* playerPrivate, int originalBufferingPercentage, GstBufferingMode mode) const
+{
+    for (auto& quirk : m_quirks) {
+        int result = quirk->correctBufferingPercentage(playerPrivate, originalBufferingPercentage, mode);
+        if (result != originalBufferingPercentage)
+            return result;
+    }
+    return originalBufferingPercentage;
+}
+
+void GStreamerQuirksManager::resetBufferingPercentage(MediaPlayerPrivateGStreamer* playerPrivate, int bufferingPercentage) const
+{
+    for (auto& quirk : m_quirks)
+        quirk->resetBufferingPercentage(playerPrivate, bufferingPercentage);
+}
+
+void GStreamerQuirksManager::setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer* playerPrivate, GstState currentState, GstState newState, GstElement* element) const
+{
+    for (auto& quirk : m_quirks)
+        quirk->setupBufferingPercentageCorrection(playerPrivate, currentState, newState, element);
 }
 
 #undef GST_CAT_DEFAULT

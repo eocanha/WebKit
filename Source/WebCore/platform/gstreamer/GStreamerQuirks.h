@@ -30,6 +30,8 @@
 
 namespace WebCore {
 
+class MediaPlayerPrivateGStreamer;
+
 enum class ElementRuntimeCharacteristics : uint8_t {
     IsMediaStream = 1 << 0,
     HasVideo = 1 << 1,
@@ -44,7 +46,30 @@ public:
     GStreamerQuirkBase() = default;
     virtual ~GStreamerQuirkBase() = default;
 
-    virtual const char* identifier() = 0;
+    virtual const char* identifier() const = 0;
+
+    // Interface of classes supplied to MediaPlayerPrivateGStreamer to store values that the quirks will need for their job.
+    class GStreamerQuirkState {
+    public:
+        GStreamerQuirkState()
+            : m_owner(nullptr)
+        {
+        }
+
+        GStreamerQuirkState(const void* owner)
+            : m_owner(owner)
+        {
+        }
+
+        virtual ~GStreamerQuirkState() = default;
+        bool isOwnedBy(const void* owner) { return m_owner == owner; }
+        bool isOwned() { return m_owner; }
+
+    private:
+        // For identification purposes only, to avoid the wrong GStreamerQuirkBase subclass to use a state that
+        // doesn't belong to itself. The pointer shouldn't be used to access the instance.
+        const void* m_owner = nullptr;
+    };
 };
 
 class GStreamerQuirk : public GStreamerQuirkBase {
@@ -62,7 +87,11 @@ public:
     virtual Vector<String> disallowedWebAudioDecoders() const { return { }; }
     virtual unsigned getAdditionalPlaybinFlags() const { return getGstPlayFlag("text") | getGstPlayFlag("soft-colorbalance"); }
     virtual bool shouldParseIncomingLibWebRTCBitStream() const { return true; }
-    virtual bool needsPlaypumpBufferingLogic() const { return false; }
+    virtual bool needsBufferingPercentageCorrection() const { return false; }
+    virtual bool queryBufferingPercentage(MediaPlayerPrivateGStreamer*, const char*&, GRefPtr<GstQuery>&) const { return false; }
+    virtual int correctBufferingPercentage(MediaPlayerPrivateGStreamer*, int originalBufferingPercentage, GstBufferingMode) const { return originalBufferingPercentage; }
+    virtual void resetBufferingPercentage(MediaPlayerPrivateGStreamer*, int) const { };
+    virtual void setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer*, GstState, GstState, GstElement*) const { }
 };
 
 class GStreamerHolePunchQuirk : public GStreamerQuirkBase {
@@ -107,8 +136,12 @@ public:
     unsigned getAdditionalPlaybinFlags() const;
 
     bool shouldParseIncomingLibWebRTCBitStream() const;
-    
-    bool needsPlaypumpBufferingLogic() const;
+
+    bool needsBufferingPercentageCorrection() const;
+    bool queryBufferingPercentage(MediaPlayerPrivateGStreamer*, const char*& elementName, GRefPtr<GstQuery>&) const;
+    int correctBufferingPercentage(MediaPlayerPrivateGStreamer*, int originalBufferingPercentage, GstBufferingMode) const;
+    void resetBufferingPercentage(MediaPlayerPrivateGStreamer*, int bufferingPercentage) const;
+    void setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer*, GstState currentState, GstState newState, GstElement*) const;
 
 private:
     GStreamerQuirksManager(bool, bool);
