@@ -33,7 +33,7 @@ namespace WebCore {
 
 class GStreamerHolePunchQuirkRialto final : public GStreamerHolePunchQuirk {
 public:
-    const char* identifier() final { return "RialtoHolePunch"; }
+    const char* identifier() const final { return "RialtoHolePunch"; }
 
     GstElement* createHolePunchVideoSink(bool, const MediaPlayer*) final;
     bool setHolePunchVideoRectangle(GstElement*, const IntRect&) final;

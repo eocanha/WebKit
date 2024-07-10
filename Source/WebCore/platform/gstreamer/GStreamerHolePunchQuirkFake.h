@@ -29,7 +29,7 @@ namespace WebCore {
 
 class GStreamerHolePunchQuirkFake final : public GStreamerHolePunchQuirk {
 public:
-    const char* identifier() final { return "FakeHolePunch"; }
+    const char* identifier() const final { return "FakeHolePunch"; }
     GstElement* createHolePunchVideoSink(bool, const MediaPlayer*) final { return makeGStreamerElement("fakevideosink", nullptr); }
     bool setHolePunchVideoRectangle(GstElement*, const IntRect&) final { return true; }
 };
