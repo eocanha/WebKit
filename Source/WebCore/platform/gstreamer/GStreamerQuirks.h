@@ -50,25 +50,13 @@ public:
 
     // Interface of classes supplied to MediaPlayerPrivateGStreamer to store values that the quirks will need for their job.
     class GStreamerQuirkState {
+        WTF_MAKE_FAST_ALLOCATED;
     public:
         GStreamerQuirkState()
-            : m_owner(nullptr)
-        {
-        }
-
-        GStreamerQuirkState(const void* owner)
-            : m_owner(owner)
         {
         }
 
         virtual ~GStreamerQuirkState() = default;
-        bool isOwnedBy(const void* owner) { return m_owner == owner; }
-        bool isOwned() { return m_owner; }
-
-    private:
-        // For identification purposes only, to avoid the wrong GStreamerQuirkBase subclass to use a state that
-        // doesn't belong to itself. The pointer shouldn't be used to access the instance.
-        const void* m_owner = nullptr;
     };
 };
 
@@ -87,8 +75,10 @@ public:
     virtual Vector<String> disallowedWebAudioDecoders() const { return { }; }
     virtual unsigned getAdditionalPlaybinFlags() const { return getGstPlayFlag("text") | getGstPlayFlag("soft-colorbalance"); }
     virtual bool shouldParseIncomingLibWebRTCBitStream() const { return true; }
+
     virtual bool needsBufferingPercentageCorrection() const { return false; }
-    virtual bool queryBufferingPercentage(MediaPlayerPrivateGStreamer*, const char*&, GRefPtr<GstQuery>&) const { return false; }
+    // Returns name of the queried GstElement, or nullptr if no element was queried.
+    virtual const char* queryBufferingPercentage(MediaPlayerPrivateGStreamer*, GRefPtr<GstQuery>&) const { return nullptr; }
     virtual int correctBufferingPercentage(MediaPlayerPrivateGStreamer*, int originalBufferingPercentage, GstBufferingMode) const { return originalBufferingPercentage; }
     virtual void resetBufferingPercentage(MediaPlayerPrivateGStreamer*, int) const { };
     virtual void setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer*, GstState, GstState, GstElement*) const { }
@@ -138,7 +128,8 @@ public:
     bool shouldParseIncomingLibWebRTCBitStream() const;
 
     bool needsBufferingPercentageCorrection() const;
-    bool queryBufferingPercentage(MediaPlayerPrivateGStreamer*, const char*& elementName, GRefPtr<GstQuery>&) const;
+    // Returns name of the queried GstElement, or nullptr if no element was queried.
+    const char* queryBufferingPercentage(MediaPlayerPrivateGStreamer*, GRefPtr<GstQuery>&) const;
     int correctBufferingPercentage(MediaPlayerPrivateGStreamer*, int originalBufferingPercentage, GstBufferingMode) const;
     void resetBufferingPercentage(MediaPlayerPrivateGStreamer*, int bufferingPercentage) const;
     void setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer*, GstState currentState, GstState newState, GstElement*) const;

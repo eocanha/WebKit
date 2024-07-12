@@ -1300,16 +1300,18 @@ void MediaPlayerPrivateGStreamer::commitLoad()
     updateStates();
 }
 
-bool MediaPlayerPrivateGStreamer::queryBufferingPercentage(GstBufferingMode& mode, int &percentage)
+std::optional<int> MediaPlayerPrivateGStreamer::queryBufferingPercentage()
 {
     GRefPtr<GstQuery> query = adoptGRef(gst_query_new_buffering(GST_FORMAT_PERCENT));
 
     bool isQueryOk = false;
-    const char* elementName = "<undefined>";
+    const char* elementName = nullptr;
 
     auto& quirksManager = GStreamerQuirksManager::singleton();
-    if (!isQueryOk)
-        isQueryOk = quirksManager.isEnabled() && quirksManager.queryBufferingPercentage(this, elementName, query);
+    if (!isQueryOk && quirksManager.isEnabled()) {
+        elementName = quirksManager.queryBufferingPercentage(this, query);
+        isQueryOk = elementName;
+    }
 
     if (!isQueryOk) {
         isQueryOk = (m_audioSink && gst_element_query(m_audioSink.get(), query.get()));
@@ -1327,18 +1329,24 @@ bool MediaPlayerPrivateGStreamer::queryBufferingPercentage(GstBufferingMode& mod
             elementName = "pipeline";
     }
     if (!isQueryOk)
-        return false;
+        return std::nullopt;
 
-    percentage = 0;
+    int percentage = 0;
+    GstBufferingMode mode;
     gst_query_parse_buffering_percent(query.get(), nullptr, &percentage);
     gst_query_parse_buffering_stats(query.get(), &mode, nullptr, nullptr, nullptr);
 
-    ASSERT(mode == GST_BUFFERING_DOWNLOAD);
-    if (mode != GST_BUFFERING_DOWNLOAD)
-        GST_WARNING_OBJECT(pipeline(), "[Buffering] mode isn't GST_BUFFERING_DOWNLOAD, but it should be!");
+    if (!elementName)
+        elementName = "<undefined>";
+    GST_TRACE_OBJECT(pipeline(), "[Buffering] %s reports %d buffering", elementName, percentage);
 
-    // No correction is done to the percentage on Broadcom because that's only done for the GST_BUFFERING_STREAM case, which can't happen here.
-    return true;
+    if (mode != GST_BUFFERING_DOWNLOAD) {
+        GST_WARNING_OBJECT(pipeline(), "[Buffering] mode isn't GST_BUFFERING_DOWNLOAD, but it should be!");
+        ASSERT_NOT_REACHED();
+        return percentage;
+    }
+
+    return percentage;
 }
 
 // This method is only called when doing on-disk buffering. No need to apply any of the extra corrections done for Broadcom when stream buffering.
@@ -1351,12 +1359,10 @@ void MediaPlayerPrivateGStreamer::MediaPlayerPrivateGStreamer::fillTimerFired()
     }
 
     double fillStatus = 100.0;
-    GstBufferingMode mode = GST_BUFFERING_DOWNLOAD;
-    int percentage = m_bufferingPercentage;
-    bool isQuerySuccessful = queryBufferingPercentage(mode, percentage);
+    std::optional<int> percentage = queryBufferingPercentage();
 
-    if (isQuerySuccessful) {
-        fillStatus = percentage;
+    if (percentage.has_value()) {
+        fillStatus = percentage.value();
     } else if (m_httpResponseTotalSize) {
         GST_DEBUG_OBJECT(pipeline(), "[Buffering] Query failed, falling back to network read position estimation");
         fillStatus = 100.0 * (static_cast<double>(m_networkReadPosition) / static_cast<double>(m_httpResponseTotalSize));
@@ -1365,7 +1371,7 @@ void MediaPlayerPrivateGStreamer::MediaPlayerPrivateGStreamer::fillTimerFired()
         return;
     }
 
-    updateBufferingStatus(mode, fillStatus);
+    updateBufferingStatus(GST_BUFFERING_DOWNLOAD, fillStatus);
 }
 
 void MediaPlayerPrivateGStreamer::loadStateChanged()
@@ -2246,7 +2252,6 @@ void MediaPlayerPrivateGStreamer::updateMaxTimeLoaded(double percentage)
 
 void MediaPlayerPrivateGStreamer::updateBufferingStatus(GstBufferingMode mode, double percentage, bool resetHistory)
 {
-    // m_wasBuffering, m_isBuffering, m_previousBufferingPercentage and m_bufferingPercentage can ONLY be modified from this method.
     m_wasBuffering = m_isBuffering;
     m_previousBufferingPercentage = m_bufferingPercentage;
 

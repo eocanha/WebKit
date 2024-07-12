@@ -19,7 +19,7 @@
  */
 
 #include "config.h"
-#include "GStreamerQuirkBroadcom.h"
+#include "GStreamerQuirkBroadcomBase.h"
 
 #include <string.h>
 
@@ -37,31 +37,23 @@ GStreamerQuirkBroadcomBase::GStreamerQuirkBroadcomBase()
     GST_DEBUG_CATEGORY_INIT(webkit_broadcom_base_quirks_debug, "webkitquirksbroadcombase", 0, "WebKit Broadcom Base Quirks");
 }
 
-bool GStreamerQuirkBroadcomBase::queryBufferingPercentage(MediaPlayerPrivateGStreamer* playerPrivate, const char*& elementName, GRefPtr<GstQuery>& query) const
+const char* GStreamerQuirkBroadcomBase::queryBufferingPercentage(MediaPlayerPrivateGStreamer* playerPrivate, GRefPtr<GstQuery>& query) const
 {
-    if (!isEnsuredOwnedState(playerPrivate))
-        return false;
-    GStreamerQuirkBroadcomBaseState& state = static_cast<GStreamerQuirkBroadcomBaseState&>(playerPrivate->quirkState());
+    auto state = ensureState(playerPrivate);
 
-    if (playerPrivate->shouldDownload() || !state.m_queue2)
-        return false;
-    if (gst_element_query(state.m_queue2.get(), query.get())) {
-        elementName = "queue2";
-        return true;
-    }
-    return false;
+    if (playerPrivate->shouldDownload() || !state.m_queue2
+        || !gst_element_query(state.m_queue2.get(), query.get()))
+        return nullptr;
+    return "queue2";
 }
 
 int GStreamerQuirkBroadcomBase::correctBufferingPercentage(MediaPlayerPrivateGStreamer* playerPrivate, int originalBufferingPercentage, GstBufferingMode mode) const
 {
-    if (!isEnsuredOwnedState(playerPrivate))
-        return originalBufferingPercentage;
-
-    GStreamerQuirkBroadcomBaseState& state = static_cast<GStreamerQuirkBroadcomBaseState&>(playerPrivate->quirkState());
+    auto state = ensureState(playerPrivate);
 
     // The Nexus playpump buffers a lot of data. Let's add it as if it had been buffered by the GstQueue2
     // (only when using in-memory buffering), so we get more realistic percentages.
-    if (mode != GST_BUFFERING_STREAM || !state.m_vidfilter)
+    if (mode != GST_BUFFERING_STREAM || !(state.m_vidfilter || state.m_audfilter))
         return originalBufferingPercentage;
 
     // The Nexus playpump buffers a lot of data. Let's add it as if it had been buffered by the GstQueue2
@@ -79,19 +71,24 @@ int GStreamerQuirkBroadcomBase::correctBufferingPercentage(MediaPlayerPrivateGSt
     }
 
     unsigned playpumpBufferedBytes = 0;
-    if (state.m_vidfilter)
-        g_object_get(GST_OBJECT(state.m_vidfilter.get()), "buffered-bytes", &playpumpBufferedBytes, nullptr);
+
+    // We believe that the playpump stats are common for audio and video, so only asking the vidfilter or the audfilter
+    // would be enough. Both of them expose the buffered_bytes property (yes, with an underscore!).
+    GstElement* filter = state.m_vidfilter ? state.m_vidfilter.get() : state.m_audfilter.get();
+    if (filter)
+        g_object_get(GST_OBJECT(filter), "buffered_bytes", &playpumpBufferedBytes, nullptr);
 
     unsigned multiqueueBufferedBytes = 0;
     if (state.m_multiqueue) {
         GUniqueOutPtr<GstStructure> stats;
         g_object_get(state.m_multiqueue.get(), "stats", &stats.outPtr(), nullptr);
         const GValue* queues = gst_structure_get_value(stats.get(), "queues");
+
         unsigned size = gst_value_array_get_size(queues);
         for (unsigned i = 0; i < size; i++) {
-            unsigned bytes = 0;
-            if (gst_structure_get_uint(gst_value_get_structure(gst_value_array_get_value(queues, i)), "bytes", &bytes))
-                multiqueueBufferedBytes += bytes;
+            multiqueueBufferedBytes += gstStructureGet<unsigned>(
+                gst_value_get_structure(gst_value_array_get_value(queues, i)),
+                "bytes"_s).value_or(0);
         }
     }
 
@@ -122,67 +119,78 @@ int GStreamerQuirkBroadcomBase::correctBufferingPercentage(MediaPlayerPrivateGSt
 
 void GStreamerQuirkBroadcomBase::resetBufferingPercentage(MediaPlayerPrivateGStreamer* playerPrivate, int bufferingPercentage) const
 {
-    if (!isEnsuredOwnedState(playerPrivate))
-        return;
-
-    GStreamerQuirkBroadcomBaseState& state = static_cast<GStreamerQuirkBroadcomBaseState&>(playerPrivate->quirkState());
-
+    auto state = ensureState(playerPrivate);
     state.m_streamBufferingLevelMovingAverage.reset(bufferingPercentage);
 }
 
 void GStreamerQuirkBroadcomBase::setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer* playerPrivate, GstState currentState, GstState newState, GstElement* element) const
 {
-    if (!isEnsuredOwnedState(playerPrivate))
-        return;
-
-    GStreamerQuirkBroadcomBaseState& state = static_cast<GStreamerQuirkBroadcomBaseState&>(playerPrivate->quirkState());
+    auto state = ensureState(playerPrivate);
 
     // This code must support being run from different GStreamerQuirkBroadcomBase subclasses without breaking. Only the
     // first subclass instance should run.
-    if (currentState == GST_STATE_NULL && newState == GST_STATE_READY
-        && g_strstr_len(GST_ELEMENT_NAME(element), 13, "brcmvidfilter")) {
-        state.m_vidfilter = element;
 
-        // Also get the multiqueue (if there's one) attached to the vidfilter. We'll need it later to correct the buffering level.
-        for (auto* sinkPad : GstIteratorAdaptor<GstPad>(GUniquePtr<GstIterator>(gst_element_iterate_sink_pads(state.m_vidfilter.get())))) {
-            GRefPtr<GstPad> peerSrcPad = adoptGRef(gst_pad_get_peer(sinkPad));
-            if (peerSrcPad) {
-                GRefPtr<GstElement> peerElement = adoptGRef(GST_ELEMENT(gst_pad_get_parent(peerSrcPad.get())));
-                // The multiqueue reference is useless if we can't access its stats (on older GStreamer versions).
-                if (peerElement && g_strstr_len(GST_ELEMENT_NAME(peerElement.get()), 10, "multiqueue")
-                    && g_object_class_find_property(G_OBJECT_GET_CLASS(peerElement.get()), "stats"))
-                    state.m_multiqueue = peerElement;
+    if (currentState == GST_STATE_NULL && newState == GST_STATE_READY) {
+        bool alsoGetMultiqueue = false;
+        if (!g_strcmp0(G_OBJECT_TYPE_NAME(element), "GstBrcmVidFilter")) {
+            state.m_vidfilter = element;
+            alsoGetMultiqueue = true;
+        } else if (!g_strcmp0(G_OBJECT_TYPE_NAME(element), "GstBrcmAudFilter")) {
+            state.m_audfilter = element;
+            alsoGetMultiqueue = true;
+        } else if (!g_strcmp0(G_OBJECT_TYPE_NAME(element), "GstQueue2"))
+            state.m_queue2 = element;
+
+        // Might have been already retrieved by vidfilter or audfilter, whichever appeared first.
+        if (alsoGetMultiqueue && !state.m_multiqueue) {
+            // Also get the multiqueue (if there's one) attached to the vidfilter/aacparse+audfilter.
+            // We'll need it later to correct the buffering level.
+            for (auto* sinkPad : GstIteratorAdaptor<GstPad>(GUniquePtr<GstIterator>(gst_element_iterate_sink_pads(element)))) {
+                GRefPtr<GstPad> peerSrcPad = adoptGRef(gst_pad_get_peer(sinkPad));
+                if (peerSrcPad) {
+                    GRefPtr<GstElement> peerElement = adoptGRef(GST_ELEMENT(gst_pad_get_parent(peerSrcPad.get())));
+
+                    // If it's NOT a multiqueue, it's probably a parser like aacparse. We try to traverse before it.
+                    if (peerElement && !!g_strcmp0(G_OBJECT_TYPE_NAME(element), "GstMultiQueue")) {
+                        for (auto* peerElementSinkPad : GstIteratorAdaptor<GstPad>(GUniquePtr<GstIterator>(gst_element_iterate_sink_pads(peerElement.get())))) {
+                            peerSrcPad = adoptGRef(gst_pad_get_peer(peerElementSinkPad));
+                            if (peerSrcPad) {
+                                // Now we hopefully have peerElement pointing to the multiqueue.
+                                peerElement = adoptGRef(GST_ELEMENT(gst_pad_get_parent(peerSrcPad.get())));
+                            }
+                            break;
+                        }
+                    }
+
+                    // The multiqueue reference is useless if we can't access its stats (on older GStreamer versions).
+                    if (peerElement && !g_strcmp0(G_OBJECT_TYPE_NAME(element), "GstMultiQueue")
+                        && gstObjectHasProperty(peerElement.get(), "stats"))
+                        state.m_multiqueue = peerElement;
+                }
+                break;
             }
-            break;
         }
-    } else if (currentState == GST_STATE_NULL && newState == GST_STATE_READY
-        && g_strstr_len(GST_ELEMENT_NAME(element), 6, "queue2")) {
-        state.m_queue2 = element;
-    } else if (currentState == GST_STATE_READY && newState == GST_STATE_NULL
-        && g_strstr_len(GST_ELEMENT_NAME(element), 13, "brcmvidfilter")) {
-        state.m_vidfilter = nullptr;
-        state.m_multiqueue = nullptr;
-    } else if (currentState == GST_STATE_READY && newState == GST_STATE_NULL
-        && g_strstr_len(GST_ELEMENT_NAME(element), 6, "queue2")) {
-        state.m_queue2 = nullptr;
+    } else if (currentState == GST_STATE_READY && newState == GST_STATE_NULL) {
+        if (!g_strcmp0(G_OBJECT_TYPE_NAME(element), "GstBrcmVidFilter"))
+            state.m_vidfilter = nullptr;
+        else if (!g_strcmp0(G_OBJECT_TYPE_NAME(element), "GstBrcmAudFilter"))
+            state.m_audfilter = nullptr;
+        else if (!g_strcmp0(G_OBJECT_TYPE_NAME(element), "GstMultiQueue") && element == state.m_multiqueue.get())
+            state.m_multiqueue = nullptr;
+        else if (!g_strcmp0(G_OBJECT_TYPE_NAME(element), "GstQueue2"))
+            state.m_queue2 = nullptr;
     }
 }
 
-bool GStreamerQuirkBroadcomBase::isEnsuredOwnedState(MediaPlayerPrivateGStreamer* playerPrivate) const
+GStreamerQuirkBroadcomBase::GStreamerQuirkBroadcomBaseState& GStreamerQuirkBroadcomBase::ensureState(MediaPlayerPrivateGStreamer* playerPrivate) const
 {
-    // The first GStreamerQuirk subclass that needs a GStreamerQuirkState will initialize it with its own class,
-    // replacing the original GStreamerQuirkState abstract placeholder. This means that only one subclass will own
-    // and use the state. The other subclasses will bail out, because the concrete state doesn't belong to them.
-    if (!playerPrivate->quirkState().isOwned()) {
+    GStreamerQuirkBase::GStreamerQuirkState* state = playerPrivate->quirkState(this);
+    if (!state) {
         GST_DEBUG("%s %p setting up quirk state on MediaPlayerPrivate %p", identifier(), this, playerPrivate);
-        playerPrivate->setQuirkState(GStreamerQuirkBroadcomBaseState(reinterpret_cast<const void*>(this)));
+        playerPrivate->setQuirkState(this, GStreamerQuirkBroadcomBaseState());
+        state = playerPrivate->quirkState(this);
     }
-
-    // But if it has been initialized before by a different subclass, we bail out.
-    if (!playerPrivate->quirkState().isOwnedBy(this))
-        return false;
-
-    return true;
+    return reinterpret_cast<GStreamerQuirkBroadcomBaseState&>(*state);
 }
 
 #undef GST_CAT_DEFAULT

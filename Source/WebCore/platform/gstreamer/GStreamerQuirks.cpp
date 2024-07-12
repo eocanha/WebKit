@@ -318,35 +318,50 @@ bool GStreamerQuirksManager::needsBufferingPercentageCorrection() const
     return false;
 }
 
-bool GStreamerQuirksManager::queryBufferingPercentage(MediaPlayerPrivateGStreamer* mediaPlayerPrivate, const char*& elementName, GRefPtr<GstQuery>& query) const
+const char* GStreamerQuirksManager::queryBufferingPercentage(MediaPlayerPrivateGStreamer* mediaPlayerPrivate, GRefPtr<GstQuery>& query) const
 {
+    // Only the first quirk that needs percentage correction must operate. We're assuming that the m_quirks Vector
+    // preserves its order among calls to the percentage correction family of methods.
     for (auto& quirk : m_quirks) {
-        if (quirk->queryBufferingPercentage(mediaPlayerPrivate, elementName, query))
-            return true;
+        if (quirk->needsBufferingPercentageCorrection())
+            return quirk->queryBufferingPercentage(mediaPlayerPrivate, query);
     }
-    return false;
+    return nullptr;
 }
 
 int GStreamerQuirksManager::correctBufferingPercentage(MediaPlayerPrivateGStreamer* playerPrivate, int originalBufferingPercentage, GstBufferingMode mode) const
 {
+    // Only the first quirk that needs percentage correction must operate. We're assuming that the m_quirks Vector
+    // preserves its order among calls to the percentage correction family of methods.
     for (auto& quirk : m_quirks) {
-        int result = quirk->correctBufferingPercentage(playerPrivate, originalBufferingPercentage, mode);
-        if (result != originalBufferingPercentage)
-            return result;
+        if (quirk->needsBufferingPercentageCorrection())
+            return quirk->correctBufferingPercentage(playerPrivate, originalBufferingPercentage, mode);
     }
     return originalBufferingPercentage;
 }
 
 void GStreamerQuirksManager::resetBufferingPercentage(MediaPlayerPrivateGStreamer* playerPrivate, int bufferingPercentage) const
 {
-    for (auto& quirk : m_quirks)
-        quirk->resetBufferingPercentage(playerPrivate, bufferingPercentage);
+    // Only the first quirk that needs percentage correction must operate. We're assuming that the m_quirks Vector
+    // preserves its order among calls to the percentage correction family of methods.
+    for (auto& quirk : m_quirks) {
+        if (quirk->needsBufferingPercentageCorrection()) {
+            quirk->resetBufferingPercentage(playerPrivate, bufferingPercentage);
+            return;
+        }
+    }
 }
 
 void GStreamerQuirksManager::setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer* playerPrivate, GstState currentState, GstState newState, GstElement* element) const
 {
-    for (auto& quirk : m_quirks)
-        quirk->setupBufferingPercentageCorrection(playerPrivate, currentState, newState, element);
+    // Only the first quirk that needs percentage correction must operate. We're assuming that the m_quirks Vector
+    // preserves its order among calls to the percentage correction family of methods.
+    for (auto& quirk : m_quirks) {
+        if (quirk->needsBufferingPercentageCorrection()) {
+            quirk->setupBufferingPercentageCorrection(playerPrivate, currentState, newState, element);
+            return;
+        }
+    }
 }
 
 #undef GST_CAT_DEFAULT
