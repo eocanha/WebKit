@@ -225,8 +225,13 @@ public:
 
     String codecForStreamId(const String& streamId);
     bool shouldDownload() { return m_fillTimer.isActive(); }
-    void setQuirkState(GStreamerQuirkBase::GStreamerQuirkState&& state) { m_quirkState = WTFMove(state); }
-    GStreamerQuirkBase::GStreamerQuirkState& quirkState() { return m_quirkState; }
+    void setQuirkState(const GStreamerQuirk* owner, GStreamerQuirkBase::GStreamerQuirkState&& state) { m_quirkStates.set(owner, WTF::makeUnique<GStreamerQuirkBase::GStreamerQuirkState>(WTFMove(state))); }
+    GStreamerQuirkBase::GStreamerQuirkState* quirkState(const GStreamerQuirk* owner)
+    {
+        if (!m_quirkStates.contains(owner))
+            return nullptr;
+        return m_quirkStates.get(owner);
+    }
 
 protected:
     enum MainThreadNotification {
@@ -503,7 +508,7 @@ private:
 
     void configureElementPlatformQuirks(GstElement*);
 
-    bool queryBufferingPercentage(GstBufferingMode&, int &percentage);
+    std::optional<int> queryBufferingPercentage();
 
     void setPlaybinURL(const URL& urlString);
 
@@ -547,7 +552,9 @@ private:
 #if USE(TEXTURE_MAPPER)
     RefPtr<TextureMapperPlatformLayerProxy> m_platformLayer;
 #endif
-    // Can only be changed from updateBufferingStatus().
+
+    // These attributes can ONLY be changed from updateBufferingStatus() in order to keep the
+    // hysteresis level detection consistent between buffer percentage update cycles.
     bool m_wasBuffering { false };
     bool m_isBuffering { false };
     int m_previousBufferingPercentage { 0 };
@@ -640,7 +647,7 @@ private:
     Ref<PlatformMediaResourceLoader> m_loader;
 
     RefPtr<GStreamerQuirksManager> m_quirksManagerForTesting;
-    GStreamerQuirkBase::GStreamerQuirkState m_quirkState;
+    HashMap<const GStreamerQuirk*, std::unique_ptr<GStreamerQuirkBase::GStreamerQuirkState>> m_quirkStates;
 };
 
 }

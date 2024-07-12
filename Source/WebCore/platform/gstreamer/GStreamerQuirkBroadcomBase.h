@@ -34,7 +34,7 @@ public:
     GStreamerQuirkBroadcomBase();
 
     bool needsBufferingPercentageCorrection() const { return true; }
-    bool queryBufferingPercentage(MediaPlayerPrivateGStreamer*, const char*& elementName, GRefPtr<GstQuery>&) const;
+    const char* queryBufferingPercentage(MediaPlayerPrivateGStreamer*, GRefPtr<GstQuery>&) const;
     int correctBufferingPercentage(MediaPlayerPrivateGStreamer*, int originalBufferingPercentage, GstBufferingMode) const;
     void resetBufferingPercentage(MediaPlayerPrivateGStreamer*, int bufferingPercentage) const;
     void setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer*, GstState currentState, GstState newState, GstElement*) const;
@@ -45,26 +45,29 @@ private:
         MovingAverage(size_t length)
             : m_values(length)
         {
+            // Ensure that the sum in accumulate() can't ever overflow, considering that the highest value
+            // for stored percentages is 100.
+            ASSERT(length < INT_MAX / 100);
         }
 
         void reset(int value)
         {
+            ASSERT(value <= 100);
             for (size_t i = 0; i < m_values.size(); i++)
                 m_values[i] = value;
         }
 
         int accumulate(int value)
         {
-            intmax_t sum = 0;
+            ASSERT(value <= 100);
+            int sum = 0;
             for (size_t i = 1; i < m_values.size(); i++) {
                 m_values[i - 1] = m_values[i];
                 sum += m_values[i - 1];
             }
             m_values[m_values.size() - 1] = value;
             sum += value;
-            intmax_t result = sum / m_values.size();
-            ASSERT(result < std::numeric_limits<int>::max());
-            return result;
+            return sum / m_values.size();
         }
     private:
         Vector<int> m_values;
@@ -74,21 +77,17 @@ private:
 
     class GStreamerQuirkBroadcomBaseState : public GStreamerQuirkState {
     public:
-        GStreamerQuirkBroadcomBaseState() = delete;
-        GStreamerQuirkBroadcomBaseState(const void* owner)
-            : GStreamerQuirkState(owner)
-        {
-        }
-
+        GStreamerQuirkBroadcomBaseState() = default;
         virtual ~GStreamerQuirkBroadcomBaseState() = default;
 
+        GRefPtr<GstElement> m_audfilter;
         GRefPtr<GstElement> m_vidfilter;
         GRefPtr<GstElement> m_multiqueue;
         GRefPtr<GstElement> m_queue2;
         MovingAverage m_streamBufferingLevelMovingAverage { 10 };
     };
 
-    bool isEnsuredOwnedState(MediaPlayerPrivateGStreamer*) const;
+    GStreamerQuirkBroadcomBaseState& ensureState(MediaPlayerPrivateGStreamer*) const;
 };
 
 } // namespace WebCore
