@@ -31,7 +31,7 @@ namespace WebCore {
 class GStreamerQuirkBroadcom final : public GStreamerQuirkBroadcomBase {
 public:
     GStreamerQuirkBroadcom();
-    const char* identifier() const final { return "Broadcom"; }
+    const ASCIILiteral identifier() const final { return "Broadcom"_s; }
 
     void configureElement(GstElement*, const OptionSet<ElementRuntimeCharacteristics>&) final;
     std::optional<bool> isHardwareAccelerated(GstElementFactory*) final;

@@ -116,7 +116,7 @@ GStreamerQuirksManager::GStreamerQuirksManager(bool isForTesting, bool loadQuirk
             }
 
             if (!quirk->isPlatformSupported()) {
-                GST_WARNING("Quirk %s was requested but is not supported on this platform. Skipping", quirk->identifier());
+                GST_WARNING("Quirk %s was requested but is not supported on this platform. Skipping", quirk->identifier().characters());
                 continue;
             }
             m_quirks.append(WTFMove(quirk));
@@ -166,7 +166,7 @@ GstElement* GStreamerQuirksManager::createAudioSink()
     for (const auto& quirk : m_quirks) {
         auto* sink = quirk->createAudioSink();
         if (sink) {
-            GST_DEBUG("Using AudioSink from quirk %s : %" GST_PTR_FORMAT, quirk->identifier(), sink);
+            GST_DEBUG("Using AudioSink from quirk %s : %" GST_PTR_FORMAT, quirk->identifier().characters(), sink);
             return sink;
         }
     }
@@ -181,7 +181,7 @@ GstElement* GStreamerQuirksManager::createWebAudioSink()
         if (!sink)
             continue;
 
-        GST_DEBUG("Using WebAudioSink from quirk %s : %" GST_PTR_FORMAT, quirk->identifier(), sink);
+        GST_DEBUG("Using WebAudioSink from quirk %s : %" GST_PTR_FORMAT, quirk->identifier().characters(), sink);
         return sink;
     }
 
@@ -196,7 +196,7 @@ GstElement* GStreamerQuirksManager::createHolePunchVideoSink(bool isLegacyPlaybi
         return nullptr;
     }
     auto sink = m_holePunchQuirk->createHolePunchVideoSink(isLegacyPlaybin, player);
-    GST_DEBUG("Using HolePunchSink from quirk %s : %" GST_PTR_FORMAT, m_holePunchQuirk->identifier(), sink);
+    GST_DEBUG("Using HolePunchSink from quirk %s : %" GST_PTR_FORMAT, m_holePunchQuirk->identifier().characters(), sink);
     return sink;
 }
 
@@ -233,7 +233,7 @@ std::optional<bool> GStreamerQuirksManager::isHardwareAccelerated(GstElementFact
         if (!result)
             continue;
 
-        GST_DEBUG("Setting %" GST_PTR_FORMAT " as %s accelerated from quirk %s", factory, quirk->identifier(), *result ? "hardware" : "software");
+        GST_DEBUG("Setting %" GST_PTR_FORMAT " as %s accelerated from quirk %s", factory, quirk->identifier().characters(), *result ? "hardware" : "software");
         return *result;
     }
 
@@ -252,7 +252,7 @@ GstElementFactoryListType GStreamerQuirksManager::audioVideoDecoderFactoryListTy
         if (!result)
             continue;
 
-        GST_DEBUG("Quirk %s requests audio/video decoder factory list override to %" G_GUINT32_FORMAT, quirk->identifier(), static_cast<uint32_t>(*result));
+        GST_DEBUG("Quirk %s requests audio/video decoder factory list override to %" G_GUINT32_FORMAT, quirk->identifier().characters(), static_cast<uint32_t>(*result));
         return *result;
     }
 
@@ -292,7 +292,7 @@ unsigned GStreamerQuirksManager::getAdditionalPlaybinFlags() const
 #endif
     for (const auto& quirk : m_quirks) {
         if (auto additionalFlags = quirk->getAdditionalPlaybinFlags()) {
-            GST_DEBUG("Quirk %s requests these playbin flags: %u", quirk->identifier(), additionalFlags);
+            GST_DEBUG("Quirk %s requests these playbin flags: %u", quirk->identifier().characters(), additionalFlags);
             flags |= additionalFlags;
         }
     }
@@ -318,7 +318,7 @@ bool GStreamerQuirksManager::needsBufferingPercentageCorrection() const
     return false;
 }
 
-const char* GStreamerQuirksManager::queryBufferingPercentage(MediaPlayerPrivateGStreamer* mediaPlayerPrivate, GRefPtr<GstQuery>& query) const
+ASCIILiteral GStreamerQuirksManager::queryBufferingPercentage(MediaPlayerPrivateGStreamer* mediaPlayerPrivate, const GRefPtr<GstQuery>& query) const
 {
     // Only the first quirk that needs percentage correction must operate. We're assuming that the m_quirks Vector
     // preserves its order among calls to the percentage correction family of methods.
@@ -326,7 +326,7 @@ const char* GStreamerQuirksManager::queryBufferingPercentage(MediaPlayerPrivateG
         if (quirk->needsBufferingPercentageCorrection())
             return quirk->queryBufferingPercentage(mediaPlayerPrivate, query);
     }
-    return nullptr;
+    return ASCIILiteral();
 }
 
 int GStreamerQuirksManager::correctBufferingPercentage(MediaPlayerPrivateGStreamer* playerPrivate, int originalBufferingPercentage, GstBufferingMode mode) const
@@ -352,13 +352,16 @@ void GStreamerQuirksManager::resetBufferingPercentage(MediaPlayerPrivateGStreame
     }
 }
 
-void GStreamerQuirksManager::setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer* playerPrivate, GstState currentState, GstState newState, GstElement* element) const
+void GStreamerQuirksManager::setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer* playerPrivate, GstState currentState, GstState newState, GRefPtr<GstElement>&& element) const
 {
     // Only the first quirk that needs percentage correction must operate. We're assuming that the m_quirks Vector
     // preserves its order among calls to the percentage correction family of methods.
     for (auto& quirk : m_quirks) {
         if (quirk->needsBufferingPercentageCorrection()) {
-            quirk->setupBufferingPercentageCorrection(playerPrivate, currentState, newState, element);
+            // We're moving the element to the inner method. If this loop ever needs to call the method twice,
+            // think about a solution to avoid passing a dummy element (after first move) to the method the second
+            // time it's called.
+            quirk->setupBufferingPercentageCorrection(playerPrivate, currentState, newState, WTFMove(element));
             return;
         }
     }

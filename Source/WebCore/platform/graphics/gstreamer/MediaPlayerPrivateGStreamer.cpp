@@ -1305,7 +1305,7 @@ std::optional<int> MediaPlayerPrivateGStreamer::queryBufferingPercentage()
     GRefPtr<GstQuery> query = adoptGRef(gst_query_new_buffering(GST_FORMAT_PERCENT));
 
     bool isQueryOk = false;
-    const char* elementName = nullptr;
+    ASCIILiteral elementName;
 
     auto& quirksManager = GStreamerQuirksManager::singleton();
     if (!isQueryOk && quirksManager.isEnabled()) {
@@ -1316,17 +1316,17 @@ std::optional<int> MediaPlayerPrivateGStreamer::queryBufferingPercentage()
     if (!isQueryOk) {
         isQueryOk = (m_audioSink && gst_element_query(m_audioSink.get(), query.get()));
         if (isQueryOk)
-            elementName = "audiosink";
+            elementName = "audiosink"_s;
     }
     if (!isQueryOk) {
         isQueryOk = (m_videoSink && gst_element_query(m_videoSink.get(), query.get()));
         if (isQueryOk)
-            elementName = "videosink";
+            elementName = "videosink"_s;
     }
     if (!isQueryOk) {
         isQueryOk = gst_element_query(m_pipeline.get(), query.get());
         if (isQueryOk)
-            elementName = "pipeline";
+            elementName = "pipeline"_s;
     }
     if (!isQueryOk)
         return std::nullopt;
@@ -1336,9 +1336,9 @@ std::optional<int> MediaPlayerPrivateGStreamer::queryBufferingPercentage()
     gst_query_parse_buffering_percent(query.get(), nullptr, &percentage);
     gst_query_parse_buffering_stats(query.get(), &mode, nullptr, nullptr, nullptr);
 
-    if (!elementName)
-        elementName = "<undefined>";
-    GST_TRACE_OBJECT(pipeline(), "[Buffering] %s reports %d buffering", elementName, percentage);
+    if (elementName.isNull())
+        elementName = "<undefined>"_s;
+    GST_TRACE_OBJECT(pipeline(), "[Buffering] %s reports %d buffering", elementName.characters(), percentage);
 
     if (mode != GST_BUFFERING_DOWNLOAD) {
         GST_WARNING_OBJECT(pipeline(), "[Buffering] mode isn't GST_BUFFERING_DOWNLOAD, but it should be!");
@@ -2029,7 +2029,7 @@ void MediaPlayerPrivateGStreamer::handleMessage(GstMessage* message)
         }
 
         if (quirksManager.isEnabled() && quirksManager.needsBufferingPercentageCorrection())
-            quirksManager.setupBufferingPercentageCorrection(this, currentState, newState, GST_ELEMENT(GST_MESSAGE_SRC(message)));
+            quirksManager.setupBufferingPercentageCorrection(this, currentState, newState, GRefPtr<GstElement>(GST_ELEMENT(GST_MESSAGE_SRC(message))));
 
         if (!messageSourceIsPlaybin || m_isDelayingLoad)
             break;

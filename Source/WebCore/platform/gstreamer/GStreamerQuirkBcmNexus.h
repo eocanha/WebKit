@@ -30,7 +30,7 @@ namespace WebCore {
 class GStreamerQuirkBcmNexus final : public GStreamerQuirkBroadcomBase {
 public:
     GStreamerQuirkBcmNexus();
-    const char* identifier() const final { return "BcmNexus"; }
+    const ASCIILiteral identifier() const final { return "BcmNexus"_s; }
 
     std::optional<bool> isHardwareAccelerated(GstElementFactory*) final;
     std::optional<GstElementFactoryListType> audioVideoDecoderFactoryListType() const final { return GST_ELEMENT_FACTORY_TYPE_PARSER; }

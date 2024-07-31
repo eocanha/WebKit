@@ -34,12 +34,12 @@ public:
     GStreamerQuirkBroadcomBase();
 
     bool needsBufferingPercentageCorrection() const { return true; }
-    const char* queryBufferingPercentage(MediaPlayerPrivateGStreamer*, GRefPtr<GstQuery>&) const;
+    ASCIILiteral queryBufferingPercentage(MediaPlayerPrivateGStreamer*, const GRefPtr<GstQuery>&) const;
     int correctBufferingPercentage(MediaPlayerPrivateGStreamer*, int originalBufferingPercentage, GstBufferingMode) const;
     void resetBufferingPercentage(MediaPlayerPrivateGStreamer*, int bufferingPercentage) const;
-    void setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer*, GstState currentState, GstState newState, GstElement*) const;
+    void setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer*, GstState currentState, GstState newState, GRefPtr<GstElement>&&) const;
 
-private:
+protected:
     class MovingAverage {
     public:
         MovingAverage(size_t length)
@@ -87,7 +87,7 @@ private:
         MovingAverage m_streamBufferingLevelMovingAverage { 10 };
     };
 
-    GStreamerQuirkBroadcomBaseState& ensureState(MediaPlayerPrivateGStreamer*) const;
+    virtual GStreamerQuirkBroadcomBaseState& ensureState(MediaPlayerPrivateGStreamer*) const;
 };
 
 } // namespace WebCore

@@ -46,7 +46,7 @@ public:
     GStreamerQuirkBase() = default;
     virtual ~GStreamerQuirkBase() = default;
 
-    virtual const char* identifier() const = 0;
+    virtual const ASCIILiteral identifier() const = 0;
 
     // Interface of classes supplied to MediaPlayerPrivateGStreamer to store values that the quirks will need for their job.
     class GStreamerQuirkState {
@@ -78,10 +78,10 @@ public:
 
     virtual bool needsBufferingPercentageCorrection() const { return false; }
     // Returns name of the queried GstElement, or nullptr if no element was queried.
-    virtual const char* queryBufferingPercentage(MediaPlayerPrivateGStreamer*, GRefPtr<GstQuery>&) const { return nullptr; }
+    virtual ASCIILiteral queryBufferingPercentage(MediaPlayerPrivateGStreamer*, const GRefPtr<GstQuery>&) const { return ASCIILiteral(); }
     virtual int correctBufferingPercentage(MediaPlayerPrivateGStreamer*, int originalBufferingPercentage, GstBufferingMode) const { return originalBufferingPercentage; }
     virtual void resetBufferingPercentage(MediaPlayerPrivateGStreamer*, int) const { };
-    virtual void setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer*, GstState, GstState, GstElement*) const { }
+    virtual void setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer*, GstState, GstState, GRefPtr<GstElement>&&) const { }
 };
 
 class GStreamerHolePunchQuirk : public GStreamerQuirkBase {
@@ -129,10 +129,10 @@ public:
 
     bool needsBufferingPercentageCorrection() const;
     // Returns name of the queried GstElement, or nullptr if no element was queried.
-    const char* queryBufferingPercentage(MediaPlayerPrivateGStreamer*, GRefPtr<GstQuery>&) const;
+    ASCIILiteral queryBufferingPercentage(MediaPlayerPrivateGStreamer*, const GRefPtr<GstQuery>&) const;
     int correctBufferingPercentage(MediaPlayerPrivateGStreamer*, int originalBufferingPercentage, GstBufferingMode) const;
     void resetBufferingPercentage(MediaPlayerPrivateGStreamer*, int bufferingPercentage) const;
-    void setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer*, GstState currentState, GstState newState, GstElement*) const;
+    void setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer*, GstState currentState, GstState newState, GRefPtr<GstElement>&&) const;
 
 private:
     GStreamerQuirksManager(bool, bool);
