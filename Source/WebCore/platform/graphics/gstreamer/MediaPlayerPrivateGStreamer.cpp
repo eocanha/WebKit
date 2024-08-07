@@ -1290,43 +1290,104 @@ void MediaPlayerPrivateGStreamer::commitLoad()
     updateStates();
 }
 
-int MediaPlayerPrivateGStreamer::correctBufferingPercentage(int originalBufferingPercentage)
+void MediaPlayerPrivateGStreamer::setupBufferingPercentageCorrection(GstState currentState, GstState newState, GRefPtr<GstElement>&& element)
 {
+#if (PLATFORM(BCM_NEXUS) || PLATFORM(BROADCOM))
+    if (currentState == GST_STATE_NULL && newState == GST_STATE_READY) {
+        bool alsoGetMultiqueue = false;
+        if (!g_strcmp0(G_OBJECT_TYPE_NAME(element.get()), "GstBrcmVidFilter")) {
+            m_vidfilter = element;
+            alsoGetMultiqueue = true;
+        } else if (!g_strcmp0(G_OBJECT_TYPE_NAME(element.get()), "GstBrcmAudFilter")) {
+            m_audfilter = element;
+            alsoGetMultiqueue = true;
+        } else if (!g_strcmp0(G_OBJECT_TYPE_NAME(element.get()), "GstQueue2"))
+            m_queue2 = element;
+
+        // Might have been already retrieved by vidfilter or audfilter, whichever appeared first.
+        if (alsoGetMultiqueue && !m_multiqueue) {
+            // Also get the multiqueue (if there's one) attached to the vidfilter/aacparse+audfilter.
+            // We'll need it later to correct the buffering level.
+            for (auto* sinkPad : GstIteratorAdaptor<GstPad>(GUniquePtr<GstIterator>(gst_element_iterate_sink_pads(element.get())))) {
+                GRefPtr<GstPad> peerSrcPad = adoptGRef(gst_pad_get_peer(sinkPad));
+                if (!peerSrcPad)
+                    continue; // And end the loop, because there's only one srcpad.
+                GRefPtr<GstElement> peerElement = adoptGRef(GST_ELEMENT(gst_pad_get_parent(peerSrcPad.get())));
+
+                // If it's NOT a multiqueue, it's probably a parser like aacparse. We try to traverse before it.
+                if (peerElement && !!g_strcmp0(G_OBJECT_TYPE_NAME(element.get()), "GstMultiQueue")) {
+                    for (auto* peerElementSinkPad : GstIteratorAdaptor<GstPad>(GUniquePtr<GstIterator>(gst_element_iterate_sink_pads(peerElement.get())))) {
+                        peerSrcPad = adoptGRef(gst_pad_get_peer(peerElementSinkPad));
+                        if (!peerSrcPad)
+                            continue; // And end the loop.
+                        // Now we hopefully have peerElement pointing to the multiqueue.
+                        peerElement = adoptGRef(GST_ELEMENT(gst_pad_get_parent(peerSrcPad.get())));
+                        break;
+                    }
+                }
+
+                // The multiqueue reference is useless if we can't access its stats (on older GStreamer versions).
+                if (peerElement && !g_strcmp0(G_OBJECT_TYPE_NAME(element.get()), "GstMultiQueue")
+                    && gstObjectHasProperty(peerElement.get(), "stats"))
+                    m_multiqueue = peerElement;
+                break;
+            }
+        }
+    } else if (currentState == GST_STATE_READY && newState == GST_STATE_NULL) {
+        if (!g_strcmp0(G_OBJECT_TYPE_NAME(element.get()), "GstBrcmVidFilter"))
+            m_vidfilter = nullptr;
+        else if (!g_strcmp0(G_OBJECT_TYPE_NAME(element.get()), "GstBrcmAudFilter"))
+            m_audfilter = nullptr;
+        else if (!g_strcmp0(G_OBJECT_TYPE_NAME(element.get()), "GstMultiQueue") && element == m_multiqueue.get())
+            m_multiqueue = nullptr;
+        else if (!g_strcmp0(G_OBJECT_TYPE_NAME(element.get()), "GstQueue2"))
+            m_queue2 = nullptr;
+    }
+#endif
+}
+
+int MediaPlayerPrivateGStreamer::correctBufferingPercentage(int originalBufferingPercentage, GstBufferingMode mode)
+{
+#if (PLATFORM(BCM_NEXUS) || PLATFORM(BROADCOM))
+    // The Nexus playpump buffers a lot of data. Let's add it as if it had been buffered by the GstQueue2
+    // (only when using in-memory buffering), so we get more realistic percentages.
+    if (mode != GST_BUFFERING_STREAM || !(m_vidfilter || m_audfilter))
+        return originalBufferingPercentage;
+
     // The Nexus playpump buffers a lot of data. Let's add it as if it had been buffered by the GstQueue2
     // (only when using in-memory buffering), so we get more realistic percentages.
     int correctedBufferingPercentage1 = originalBufferingPercentage;
     int correctedBufferingPercentage2 = originalBufferingPercentage;
-    guint maxSizeBytes = 0;
+    unsigned maxSizeBytes = 0;
 
     // We don't trust the buffering percentage when it's 0, better rely on current-level-bytes and compute a new buffer level accordingly.
     g_object_get(m_queue2.get(), "max-size-bytes", &maxSizeBytes, nullptr);
     if (!originalBufferingPercentage && m_queue2) {
-        guint currentLevelBytes = 0;
+        unsigned currentLevelBytes = 0;
         g_object_get(m_queue2.get(), "current-level-bytes", &currentLevelBytes, nullptr);
-        correctedBufferingPercentage1 = currentLevelBytes > maxSizeBytes ? 100 : (int)(currentLevelBytes * 100 / maxSizeBytes);
+        correctedBufferingPercentage1 = currentLevelBytes > maxSizeBytes ? 100 : static_cast<int>(currentLevelBytes * 100 / maxSizeBytes);
     }
 
-    guint playpumpBufferedBytes = 0;
-    if (m_vidfilter)
-        g_object_get(GST_OBJECT(m_vidfilter.get()), "buffered-bytes", &playpumpBufferedBytes, nullptr);
+    unsigned playpumpBufferedBytes = 0;
 
-    guint multiqueueBufferedBytes = 0;
+    // We believe that the playpump stats are common for audio and video, so only asking the vidfilter or the audfilter
+    // would be enough. Both of them expose the buffered_bytes property (yes, with an underscore!).
+    GstElement* filter = m_vidfilter ? m_vidfilter.get() : m_audfilter.get();
+    if (filter)
+        g_object_get(GST_OBJECT(filter), "buffered_bytes", &playpumpBufferedBytes, nullptr);
+
+    unsigned multiqueueBufferedBytes = 0;
     if (m_multiqueue) {
         GUniqueOutPtr<GstStructure> stats;
         g_object_get(m_multiqueue.get(), "stats", &stats.outPtr(), nullptr);
-        const GValue* queues = gst_structure_get_value(stats.get(), "queues");
-        guint size = gst_value_array_get_size(queues);
-        for (guint i = 0; i < size; i++) {
-            guint bytes = 0;
-            if (gst_structure_get_uint(gst_value_get_structure(gst_value_array_get_value(queues, i)), "bytes", &bytes))
-                multiqueueBufferedBytes += bytes;
-        }
+        for (const auto& queue : gstStructureGetArray<const GstStructure*>(stats.get(), "queues"_s))
+            multiqueueBufferedBytes += gstStructureGet<unsigned>(queue, "bytes"_s).value_or(0);
     }
 
     // Current-level-bytes seems to be inacurate, so we compute its value from the buffering percentage.
-    size_t currentLevelBytes = (size_t)maxSizeBytes * (size_t)originalBufferingPercentage / (size_t)100
-        + (size_t)playpumpBufferedBytes + (size_t)multiqueueBufferedBytes;
-    correctedBufferingPercentage2 = currentLevelBytes > maxSizeBytes ? 100 : (int)(currentLevelBytes * 100 / maxSizeBytes);
+    size_t currentLevelBytes = static_cast<size_t>(maxSizeBytes) * static_cast<size_t>(originalBufferingPercentage) / static_cast<size_t>(100)
+        + static_cast<size_t>(playpumpBufferedBytes) + static_cast<size_t>(multiqueueBufferedBytes);
+    correctedBufferingPercentage2 = currentLevelBytes > maxSizeBytes ? 100 : static_cast<int>(currentLevelBytes * 100 / maxSizeBytes);
 
     if (correctedBufferingPercentage2 >= 100)
         m_streamBufferingLevelMovingAverage.reset(100);
@@ -1346,54 +1407,60 @@ int MediaPlayerPrivateGStreamer::correctBufferingPercentage(int originalBufferin
 #endif
 
     return averagedBufferingPercentage;
+#else
+    return originalBufferingPercentage;
+#endif
 }
 
-bool MediaPlayerPrivateGStreamer::queryBufferingPercentage(GstBufferingMode& mode, int &percentage)
+std::optional<int> MediaPlayerPrivateGStreamer::queryBufferingPercentage()
 {
     GRefPtr<GstQuery> query = adoptGRef(gst_query_new_buffering(GST_FORMAT_PERCENT));
 
-    bool queryOk = false;
-    const char* elementName = "<undefined>";
-
-    bool shouldDownload = m_fillTimer.isActive();
+    bool isQueryOk = false;
+    ASCIILiteral elementName;
 
 #if (PLATFORM(BCM_NEXUS) || PLATFORM(BROADCOM))
-    // In cases where we know for sure that queue2 is being used (stream mode), let's ask it directly.
-    if (!queryOk) {
-        queryOk = (!shouldDownload && m_queue2 && gst_element_query(m_queue2.get(), query.get()));
-        if (queryOk)
-            elementName = "queue2";
+    if (!isQueryOk) {
+        isQueryOk = (m_queue2 && gst_element_query(m_queue2.get(), query.get()));
+        if (isQueryOk)
+            elementName = "queue2"_s;
     }
 #endif
 
-    if (!queryOk) {
-        queryOk = (m_audioSink && gst_element_query(m_audioSink.get(), query.get()));
-        if (queryOk)
-            elementName = "audiosink";
+    if (!isQueryOk) {
+        isQueryOk = (m_audioSink && gst_element_query(m_audioSink.get(), query.get()));
+        if (isQueryOk)
+            elementName = "audiosink"_s;
     }
-    if (!queryOk) {
-        queryOk = (m_videoSink && gst_element_query(m_videoSink.get(), query.get()));
-        if (queryOk)
-            elementName = "videosink";
+    if (!isQueryOk) {
+        isQueryOk = (m_videoSink && gst_element_query(m_videoSink.get(), query.get()));
+        if (isQueryOk)
+            elementName = "videosink"_s;
     }
-    if (!queryOk) {
-        queryOk = gst_element_query(m_pipeline.get(), query.get());
-        if (queryOk)
-            elementName = "pipeline";
+    if (!isQueryOk) {
+        isQueryOk = gst_element_query(m_pipeline.get(), query.get());
+        if (isQueryOk)
+            elementName = "pipeline"_s;
     }
-    if (!queryOk)
-        return false;
+    if (!isQueryOk)
+        return std::nullopt;
 
-    percentage = 0;
+    int percentage = 0;
+    GstBufferingMode mode;
     gst_query_parse_buffering_percent(query.get(), nullptr, &percentage);
     gst_query_parse_buffering_stats(query.get(), &mode, nullptr, nullptr, nullptr);
 
-    ASSERT(mode == GST_BUFFERING_DOWNLOAD);
-    if (mode != GST_BUFFERING_DOWNLOAD)
-        GST_WARNING_OBJECT(pipeline(), "[Buffering] mode isn't GST_BUFFERING_DOWNLOAD, but it should be!");
+    if (elementName.isNull())
+        elementName = "<undefined>"_s;
+    GST_TRACE_OBJECT(pipeline(), "[Buffering] %s reports %d buffering", elementName.characters(), percentage);
 
-    // No correction is done to the percentage on Broadcom because that's only done for the GST_BUFFERING_STREAM case, which can't happen here.
-    return true;
+    if (mode != GST_BUFFERING_DOWNLOAD) {
+        GST_WARNING_OBJECT(pipeline(), "[Buffering] mode isn't GST_BUFFERING_DOWNLOAD, but it should be!");
+        ASSERT_NOT_REACHED();
+        return percentage;
+    }
+
+    return percentage;
 }
 
 // This method is only called when doing on-disk buffering. No need to apply any of the extra corrections done for Broadcom when stream buffering.
@@ -1406,12 +1473,10 @@ void MediaPlayerPrivateGStreamer::MediaPlayerPrivateGStreamer::fillTimerFired()
     }
 
     double fillStatus = 100.0;
-    GstBufferingMode mode = GST_BUFFERING_DOWNLOAD;
-    int percentage = m_bufferingPercentage;
-    bool isQuerySuccessful = queryBufferingPercentage(mode, percentage);
+    std::optional<int> percentage = queryBufferingPercentage();
 
-    if (isQuerySuccessful) {
-        fillStatus = percentage;
+    if (percentage.has_value()) {
+        fillStatus = percentage.value();
     } else if (m_httpResponseTotalSize) {
         GST_DEBUG_OBJECT(pipeline(), "[Buffering] Query failed, falling back to network read position estimation");
         fillStatus = 100.0 * (static_cast<double>(m_networkReadPosition) / static_cast<double>(m_httpResponseTotalSize));
@@ -1420,7 +1485,7 @@ void MediaPlayerPrivateGStreamer::MediaPlayerPrivateGStreamer::fillTimerFired()
         return;
     }
 
-    updateBufferingStatus(mode, fillStatus);
+    updateBufferingStatus(GST_BUFFERING_DOWNLOAD, fillStatus);
 }
 
 void MediaPlayerPrivateGStreamer::loadStateChanged()
@@ -2090,55 +2155,7 @@ void MediaPlayerPrivateGStreamer::handleMessage(GstMessage* message)
 #endif
 
 #if (PLATFORM(BCM_NEXUS) || PLATFORM(BROADCOM))
-        if (currentState == GST_STATE_NULL && newState == GST_STATE_READY
-            && g_strstr_len(GST_MESSAGE_SRC_NAME(message), 13, "brcmvidfilter")) {
-            m_vidfilter = GST_ELEMENT(GST_MESSAGE_SRC(message));
-
-            // Also get the multiqueue (if there's one) attached to the vidfilter. We'll need it later to correct the buffering level.
-            GstPad* sinkPad = nullptr;
-            GstIterator* iter = gst_element_iterate_sink_pads(m_vidfilter.get());
-            bool done = false;
-            while (!done) {
-                GValue item = G_VALUE_INIT;
-                switch (gst_iterator_next(iter, &item)) {
-                case GST_ITERATOR_OK: {
-                    sinkPad = static_cast<GstPad*>(g_value_get_object(&item));
-                    break;
-                }
-                case GST_ITERATOR_RESYNC:
-                    gst_iterator_resync(iter);
-                    break;
-                case GST_ITERATOR_ERROR:
-                    FALLTHROUGH;
-                case GST_ITERATOR_DONE:
-                    done = true;
-                    break;
-                }
-                g_value_unset(&item);
-            }
-            gst_iterator_free(iter);
-
-            if (sinkPad) {
-                GRefPtr<GstPad> peerSrcPad = adoptGRef(gst_pad_get_peer(sinkPad));
-                if (peerSrcPad) {
-                    GRefPtr<GstElement> peerElement = adoptGRef(GST_ELEMENT(gst_pad_get_parent(peerSrcPad.get())));
-                    // The multiqueue reference is useless if we can't access its stats (on older GStreamer versions).
-                    if (peerElement && g_strstr_len(GST_ELEMENT_NAME(peerElement.get()), 10, "multiqueue")
-                        && g_object_class_find_property(G_OBJECT_GET_CLASS(peerElement.get()), "stats"))
-                        m_multiqueue = peerElement;
-                }
-            }
-        } else if (currentState == GST_STATE_NULL && newState == GST_STATE_READY
-            && g_strstr_len(GST_MESSAGE_SRC_NAME(message), 6, "queue2")) {
-            m_queue2 = GST_ELEMENT(GST_MESSAGE_SRC(message));
-        } else if (currentState == GST_STATE_READY && newState == GST_STATE_NULL
-            && g_strstr_len(GST_MESSAGE_SRC_NAME(message), 13, "brcmvidfilter")) {
-            m_vidfilter = nullptr;
-            m_multiqueue = nullptr;
-        } else if (currentState == GST_STATE_READY && newState == GST_STATE_NULL
-            && g_strstr_len(GST_MESSAGE_SRC_NAME(message), 6, "queue2")) {
-            m_queue2 = nullptr;
-        }
+        setupBufferingPercentageCorrection(currentState, newState, GRefPtr<GstElement>(GST_ELEMENT(GST_MESSAGE_SRC(message))));
 #endif
 
         if (!messageSourceIsPlaybin || m_isDelayingLoad)
@@ -2343,14 +2360,11 @@ void MediaPlayerPrivateGStreamer::processBufferingStats(GstMessage* message)
     int percentage;
     gst_message_parse_buffering(message, &percentage);
 
-#if (PLATFORM(BCM_NEXUS) || PLATFORM(BROADCOM))
     // The Nexus playpump buffers a lot of data. Let's add it as if it had been buffered by the GstQueue2
     // (only when using in-memory buffering), so we get more realistic percentages.
-    if (mode == GST_BUFFERING_STREAM && m_vidfilter)
-        percentage = correctBufferingPercentage(percentage);
-#endif
+    percentage = correctBufferingPercentage(percentage, mode);
 
-    updateBufferingStatus(mode, double(percentage));
+    updateBufferingStatus(mode, static_cast<double>(percentage));
 }
 
 void MediaPlayerPrivateGStreamer::updateMaxTimeLoaded(double percentage)
@@ -2365,7 +2379,6 @@ void MediaPlayerPrivateGStreamer::updateMaxTimeLoaded(double percentage)
 
 void MediaPlayerPrivateGStreamer::updateBufferingStatus(GstBufferingMode mode, double percentage, bool resetHistory)
 {
-    // m_wasBuffering, m_isBuffering, m_previousBufferingPercentage and m_bufferingPercentage can ONLY be modified from this method.
     m_wasBuffering = m_isBuffering;
     m_previousBufferingPercentage = m_bufferingPercentage;
 

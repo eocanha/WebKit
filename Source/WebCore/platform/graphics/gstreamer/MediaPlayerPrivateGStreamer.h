@@ -549,39 +549,42 @@ private:
     void configureElementPlatformQuirks(GstElement*);
 #endif
 
-    class MovingAverage {
+   class MovingAverage {
     public:
-        MovingAverage(const unsigned char length)
-            : m_length(length)
-            , m_values(new int[length]{}) {
+        MovingAverage(size_t length)
+            : m_values(length)
+        {
+            // Ensure that the sum in accumulate() can't ever overflow, considering that the highest value
+            // for stored percentages is 100.
+            ASSERT(length < INT_MAX / 100);
         }
 
-        ~MovingAverage() {
-            free(m_values);
-        }
-
-        void reset(int value) {
-            for (unsigned char i = 0; i < m_length; i++)
+        void reset(int value)
+        {
+            ASSERT(value <= 100);
+            for (size_t i = 0; i < m_values.size(); i++)
                 m_values[i] = value;
         }
 
-        int accumulate(int value) {
+        int accumulate(int value)
+        {
+            ASSERT(value <= 100);
             int sum = 0;
-            for (unsigned char i = 1; i < m_length; i++) {
-                m_values[i-1] = m_values[i];
-                sum += m_values[i-1];
+            for (size_t i = 1; i < m_values.size(); i++) {
+                m_values[i - 1] = m_values[i];
+                sum += m_values[i - 1];
             }
-            m_values[m_length - 1] = value;
+            m_values[m_values.size() - 1] = value;
             sum += value;
-            return sum / m_length;
+            return sum / m_values.size();
         }
     private:
-        const unsigned char m_length;
-        int* m_values;
+        Vector<int> m_values;
     };
 
-    int correctBufferingPercentage(const int originalBufferingPercentage);
-    bool queryBufferingPercentage(GstBufferingMode&, int &percentage);
+    void setupBufferingPercentageCorrection(GstState currentState, GstState newState, GRefPtr<GstElement>&&);
+    int correctBufferingPercentage(int originalBufferingPercentage, GstBufferingMode);
+    std::optional<int> queryBufferingPercentage();
 
     void setPlaybinURL(const URL& urlString);
 
@@ -721,9 +724,10 @@ private:
     MediaTime m_pausedTime;
 
     GRefPtr<GstElement> m_vidfilter;
+    GRefPtr<GstElement> m_audfilter;
     GRefPtr<GstElement> m_multiqueue;
     GRefPtr<GstElement> m_queue2;
-    MovingAverage m_streamBufferingLevelMovingAverage = MovingAverage(10);
+    MovingAverage m_streamBufferingLevelMovingAverage { 10 };
 };
 
 }
