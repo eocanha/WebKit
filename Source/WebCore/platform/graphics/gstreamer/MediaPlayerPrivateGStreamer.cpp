@@ -558,7 +558,8 @@ bool MediaPlayerPrivateGStreamer::doSeek(const MediaTime& position, float rate, 
 
     // Stream mode. Seek will automatically deplete buffer level, so we always want to pause the pipeline and wait until the
     // buffer is replenished. But we don't want this behaviour on immediate seeks that only change the playback rate.
-    if (!m_downloadBuffer && !m_isChangingRate) {
+    // We restrict this behaviour to protocols that use NetworkProcess.
+    if (!m_downloadBuffer && !m_isChangingRate && m_url.protocolIsInHTTPFamily()) {
         GST_DEBUG_OBJECT(pipeline(), "[Buffering] Pausing pipeline, resetting buffering level to 0 and forcing m_isBuffering true before seeking on stream mode");
 
 #if (PLATFORM(BCM_NEXUS) || PLATFORM(BROADCOM))
