@@ -139,6 +139,8 @@ WTF_MAKE_TZONE_ALLOCATED_IMPL(MediaPlayerPrivateGStreamer);
 
 static const FloatSize s_holePunchDefaultFrameSize(1280, 720);
 
+bool isMediaDiskCacheDisabled();
+
 #ifndef GST_DISABLE_GST_DEBUG
 class MediaLogObserver : public WebCoreLogObserver {
 public:
@@ -2330,6 +2332,11 @@ void MediaPlayerPrivateGStreamer::updateBufferingStatus(GstBufferingMode mode, d
 
     if (m_didDownloadFinish)
         m_fillTimer.stop();
+    else {
+        bool shouldDownload = !m_isLiveStream.value_or(false) && m_preload == MediaPlayer::Preload::Auto && !isMediaDiskCacheDisabled();
+        if (shouldDownload)
+            m_fillTimer.startRepeating(200_ms);
+    }
 
     m_bufferingPercentage = percentage;
 
