@@ -144,6 +144,8 @@ GST_DEBUG_CATEGORY(webkit_media_player_debug);
 namespace WebCore {
 using namespace std;
 
+bool isMediaDiskCacheDisabled();
+
 #if USE(GSTREAMER_HOLEPUNCH)
 static const FloatSize s_holePunchDefaultFrameSize(1280, 720);
 #endif
@@ -2425,6 +2427,11 @@ void MediaPlayerPrivateGStreamer::updateBufferingStatus(GstBufferingMode mode, d
 
     if (m_didDownloadFinish)
         m_fillTimer.stop();
+    else {
+        bool shouldDownload = !m_isLiveStream.value_or(false) && m_preload == MediaPlayer::Preload::Auto && !isMediaDiskCacheDisabled();
+        if (shouldDownload)
+            m_fillTimer.startRepeating(200_ms);
+    }
 
     m_bufferingPercentage = percentage;
 
