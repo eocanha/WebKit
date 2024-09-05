@@ -225,7 +225,13 @@ public:
 
     String codecForStreamId(const String& streamId);
     bool shouldDownload() { return m_fillTimer.isActive(); }
-    void setQuirkState(const GStreamerQuirk* owner, GStreamerQuirkBase::GStreamerQuirkState&& state) { m_quirkStates.set(owner, WTF::makeUnique<GStreamerQuirkBase::GStreamerQuirkState>(WTFMove(state))); }
+
+    void setQuirkState(const GStreamerQuirk* owner, GStreamerQuirkBase::GStreamerQuirkState&& state)
+    {
+        // Like makeUnique(), but using the move constructor instead of the copy constructor.
+        m_quirkStates.set(owner, std::unique_ptr<GStreamerQuirkBase::GStreamerQuirkState>(new GStreamerQuirkBase::GStreamerQuirkState(WTFMove(state))));
+    }
+
     GStreamerQuirkBase::GStreamerQuirkState* quirkState(const GStreamerQuirk* owner)
     {
         if (!m_quirkStates.contains(owner))

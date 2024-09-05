@@ -39,7 +39,7 @@ GStreamerQuirkBroadcomBase::GStreamerQuirkBroadcomBase()
 
 ASCIILiteral GStreamerQuirkBroadcomBase::queryBufferingPercentage(MediaPlayerPrivateGStreamer* playerPrivate, const GRefPtr<GstQuery>& query) const
 {
-    auto state = ensureState(playerPrivate);
+    auto& state = ensureState(playerPrivate);
 
     if (playerPrivate->shouldDownload() || !state.m_queue2
         || !gst_element_query(state.m_queue2.get(), query.get()))
@@ -49,7 +49,7 @@ ASCIILiteral GStreamerQuirkBroadcomBase::queryBufferingPercentage(MediaPlayerPri
 
 int GStreamerQuirkBroadcomBase::correctBufferingPercentage(MediaPlayerPrivateGStreamer* playerPrivate, int originalBufferingPercentage, GstBufferingMode mode) const
 {
-    auto state = ensureState(playerPrivate);
+    auto& state = ensureState(playerPrivate);
 
     // The Nexus playpump buffers a lot of data. Let's add it as if it had been buffered by the GstQueue2
     // (only when using in-memory buffering), so we get more realistic percentages.
@@ -95,7 +95,6 @@ int GStreamerQuirkBroadcomBase::correctBufferingPercentage(MediaPlayerPrivateGSt
         state.m_streamBufferingLevelMovingAverage.reset(100);
     int averagedBufferingPercentage = state.m_streamBufferingLevelMovingAverage.accumulate(correctedBufferingPercentage2);
 
-#ifndef GST_DISABLE_GST_DEBUG
     const char* extraElements = state.m_multiqueue ? "playpump and multiqueue" : "playpump";
     if (!originalBufferingPercentage) {
         GST_DEBUG("[Buffering] Buffering: mode: GST_BUFFERING_STREAM, status: %d%% (corrected to %d%% with current-level-bytes, "
@@ -106,20 +105,19 @@ int GStreamerQuirkBroadcomBase::correctBufferingPercentage(MediaPlayerPrivateGSt
             "to %d%% with moving average).", originalBufferingPercentage, correctedBufferingPercentage2, extraElements,
             averagedBufferingPercentage);
     }
-#endif
 
     return averagedBufferingPercentage;
 }
 
 void GStreamerQuirkBroadcomBase::resetBufferingPercentage(MediaPlayerPrivateGStreamer* playerPrivate, int bufferingPercentage) const
 {
-    auto state = ensureState(playerPrivate);
+    auto& state = ensureState(playerPrivate);
     state.m_streamBufferingLevelMovingAverage.reset(bufferingPercentage);
 }
 
 void GStreamerQuirkBroadcomBase::setupBufferingPercentageCorrection(MediaPlayerPrivateGStreamer* playerPrivate, GstState currentState, GstState newState, GRefPtr<GstElement>&& element) const
 {
-    auto state = ensureState(playerPrivate);
+    auto& state = ensureState(playerPrivate);
 
     // This code must support being run from different GStreamerQuirkBroadcomBase subclasses without breaking. Only the
     // first subclass instance should run.
@@ -146,7 +144,7 @@ void GStreamerQuirkBroadcomBase::setupBufferingPercentageCorrection(MediaPlayerP
                 GRefPtr<GstElement> peerElement = adoptGRef(GST_ELEMENT(gst_pad_get_parent(peerSrcPad.get())));
 
                 // If it's NOT a multiqueue, it's probably a parser like aacparse. We try to traverse before it.
-                if (peerElement && !!g_strcmp0(G_OBJECT_TYPE_NAME(element.get()), "GstMultiQueue")) {
+                if (peerElement && g_strcmp0(G_OBJECT_TYPE_NAME(element.get()), "GstMultiQueue")) {
                     for (auto* peerElementSinkPad : GstIteratorAdaptor<GstPad>(GUniquePtr<GstIterator>(gst_element_iterate_sink_pads(peerElement.get())))) {
                         peerSrcPad = adoptGRef(gst_pad_get_peer(peerElementSinkPad));
                         if (!peerSrcPad)
@@ -181,7 +179,7 @@ GStreamerQuirkBroadcomBase::GStreamerQuirkBroadcomBaseState& GStreamerQuirkBroad
     GStreamerQuirkBase::GStreamerQuirkState* state = playerPrivate->quirkState(this);
     if (!state) {
         GST_DEBUG("%s %p setting up quirk state on MediaPlayerPrivate %p", identifier().characters(), this, playerPrivate);
-        playerPrivate->setQuirkState(this, GStreamerQuirkBroadcomBaseState());
+        playerPrivate->setQuirkState(this, WTFMove(GStreamerQuirkBroadcomBaseState()));
         state = playerPrivate->quirkState(this);
     }
     return reinterpret_cast<GStreamerQuirkBroadcomBaseState&>(*state);

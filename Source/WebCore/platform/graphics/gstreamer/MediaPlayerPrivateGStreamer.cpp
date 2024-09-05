@@ -1347,12 +1347,12 @@ std::optional<int> MediaPlayerPrivateGStreamer::queryBufferingPercentage()
     }
 
     if (!isQueryOk) {
-        isQueryOk = (m_audioSink && gst_element_query(m_audioSink.get(), query.get()));
+        isQueryOk = m_audioSink && gst_element_query(m_audioSink.get(), query.get());
         if (isQueryOk)
             elementName = "audiosink"_s;
     }
     if (!isQueryOk) {
-        isQueryOk = (m_videoSink && gst_element_query(m_videoSink.get(), query.get()));
+        isQueryOk = m_videoSink && gst_element_query(m_videoSink.get(), query.get());
         if (isQueryOk)
             elementName = "videosink"_s;
     }
@@ -2332,10 +2332,10 @@ void MediaPlayerPrivateGStreamer::updateBufferingStatus(GstBufferingMode mode, d
 
     if (m_didDownloadFinish)
         m_fillTimer.stop();
-    else {
-        bool shouldDownload = !m_isLiveStream.value_or(false) && m_preload == MediaPlayer::Preload::Auto && !isMediaDiskCacheDisabled();
-        if (shouldDownload)
-            m_fillTimer.startRepeating(200_ms);
+    else if (!m_isLiveStream.value_or(false) && m_preload == MediaPlayer::Preload::Auto
+        && !isMediaDiskCacheDisabled()) {
+        // Should download, so restart the timer.
+        m_fillTimer.startRepeating(200_ms);
     }
 
     m_bufferingPercentage = percentage;
