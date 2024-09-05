@@ -51,11 +51,12 @@ public:
     // Interface of classes supplied to MediaPlayerPrivateGStreamer to store values that the quirks will need for their job.
     class GStreamerQuirkState {
         WTF_MAKE_FAST_ALLOCATED;
+        WTF_MAKE_NONCOPYABLE(GStreamerQuirkState);
     public:
         GStreamerQuirkState()
         {
         }
-
+        GStreamerQuirkState(GStreamerQuirkState&&) = default;
         virtual ~GStreamerQuirkState() = default;
     };
 };

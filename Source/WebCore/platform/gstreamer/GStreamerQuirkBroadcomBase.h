@@ -78,6 +78,7 @@ protected:
     class GStreamerQuirkBroadcomBaseState : public GStreamerQuirkState {
     public:
         GStreamerQuirkBroadcomBaseState() = default;
+        GStreamerQuirkBroadcomBaseState(GStreamerQuirkBroadcomBaseState&&) = default;
         virtual ~GStreamerQuirkBroadcomBaseState() = default;
 
         GRefPtr<GstElement> m_audfilter;
