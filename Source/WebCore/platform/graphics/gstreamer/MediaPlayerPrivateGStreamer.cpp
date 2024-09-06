@@ -1318,7 +1318,7 @@ void MediaPlayerPrivateGStreamer::setupBufferingPercentageCorrection(GstState cu
                 GRefPtr<GstElement> peerElement = adoptGRef(GST_ELEMENT(gst_pad_get_parent(peerSrcPad.get())));
 
                 // If it's NOT a multiqueue, it's probably a parser like aacparse. We try to traverse before it.
-                if (peerElement && !!g_strcmp0(G_OBJECT_TYPE_NAME(element.get()), "GstMultiQueue")) {
+                if (peerElement && g_strcmp0(G_OBJECT_TYPE_NAME(element.get()), "GstMultiQueue")) {
                     for (auto* peerElementSinkPad : GstIteratorAdaptor<GstPad>(GUniquePtr<GstIterator>(gst_element_iterate_sink_pads(peerElement.get())))) {
                         peerSrcPad = adoptGRef(gst_pad_get_peer(peerElementSinkPad));
                         if (!peerSrcPad)
@@ -1396,7 +1396,6 @@ int MediaPlayerPrivateGStreamer::correctBufferingPercentage(int originalBufferin
         m_streamBufferingLevelMovingAverage.reset(100);
     int averagedBufferingPercentage = m_streamBufferingLevelMovingAverage.accumulate(correctedBufferingPercentage2);
 
-#ifndef GST_DISABLE_GST_DEBUG
     const char* extraElements = m_multiqueue ? "playpump and multiqueue" : "playpump";
     if (!originalBufferingPercentage) {
         GST_DEBUG("[Buffering] Buffering: mode: GST_BUFFERING_STREAM, status: %d%% (corrected to %d%% with current-level-bytes, "
@@ -1407,7 +1406,6 @@ int MediaPlayerPrivateGStreamer::correctBufferingPercentage(int originalBufferin
             "to %d%% with moving average).", originalBufferingPercentage, correctedBufferingPercentage2, extraElements,
             averagedBufferingPercentage);
     }
-#endif
 
     return averagedBufferingPercentage;
 #else
@@ -1424,19 +1422,19 @@ std::optional<int> MediaPlayerPrivateGStreamer::queryBufferingPercentage()
 
 #if (PLATFORM(BCM_NEXUS) || PLATFORM(BROADCOM))
     if (!isQueryOk) {
-        isQueryOk = (m_queue2 && gst_element_query(m_queue2.get(), query.get()));
+        isQueryOk = m_queue2 && gst_element_query(m_queue2.get(), query.get());
         if (isQueryOk)
             elementName = "queue2"_s;
     }
 #endif
 
     if (!isQueryOk) {
-        isQueryOk = (m_audioSink && gst_element_query(m_audioSink.get(), query.get()));
+        isQueryOk = m_audioSink && gst_element_query(m_audioSink.get(), query.get());
         if (isQueryOk)
             elementName = "audiosink"_s;
     }
     if (!isQueryOk) {
-        isQueryOk = (m_videoSink && gst_element_query(m_videoSink.get(), query.get()));
+        isQueryOk = m_videoSink && gst_element_query(m_videoSink.get(), query.get());
         if (isQueryOk)
             elementName = "videosink"_s;
     }
@@ -2427,9 +2425,9 @@ void MediaPlayerPrivateGStreamer::updateBufferingStatus(GstBufferingMode mode, d
 
     if (m_didDownloadFinish)
         m_fillTimer.stop();
-    else {
-        bool shouldDownload = !m_isLiveStream.value_or(false) && m_preload == MediaPlayer::Preload::Auto && !isMediaDiskCacheDisabled();
-        if (shouldDownload)
+    else if (!m_isLiveStream.value_or(false) && m_preload == MediaPlayer::Preload::Auto
+            && !isMediaDiskCacheDisabled()) {
+            // Should download, so restart the timer.
             m_fillTimer.startRepeating(200_ms);
     }
 
