@@ -25,6 +25,8 @@
 #include "GStreamerCommon.h"
 #include "MediaPlayer.h"
 #include <wtf/Forward.h>
+#include <wtf/Noncopyable.h>
+#include <wtf/Nonmovable.h>
 #include <wtf/RefCounted.h>
 #include <wtf/Vector.h>
 
@@ -51,12 +53,13 @@ public:
     // Interface of classes supplied to MediaPlayerPrivateGStreamer to store values that the quirks will need for their job.
     class GStreamerQuirkState {
         WTF_MAKE_FAST_ALLOCATED;
+        // Prevent accidental https://en.wikipedia.org/wiki/Object_slicing.
         WTF_MAKE_NONCOPYABLE(GStreamerQuirkState);
+        WTF_MAKE_NONMOVABLE(GStreamerQuirkState);
     public:
         GStreamerQuirkState()
         {
         }
-        GStreamerQuirkState(GStreamerQuirkState&&) = default;
         virtual ~GStreamerQuirkState() = default;
     };
 };

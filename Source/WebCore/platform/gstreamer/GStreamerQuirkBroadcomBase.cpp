@@ -179,7 +179,7 @@ GStreamerQuirkBroadcomBase::GStreamerQuirkBroadcomBaseState& GStreamerQuirkBroad
     GStreamerQuirkBase::GStreamerQuirkState* state = playerPrivate->quirkState(this);
     if (!state) {
         GST_DEBUG("%s %p setting up quirk state on MediaPlayerPrivate %p", identifier().characters(), this, playerPrivate);
-        playerPrivate->setQuirkState(this, GStreamerQuirkBroadcomBaseState());
+        playerPrivate->setQuirkState(this, makeUnique<GStreamerQuirkBroadcomBaseState>());
         state = playerPrivate->quirkState(this);
     }
     return reinterpret_cast<GStreamerQuirkBroadcomBaseState&>(*state);

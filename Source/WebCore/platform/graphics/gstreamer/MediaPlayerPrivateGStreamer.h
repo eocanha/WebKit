@@ -281,10 +281,9 @@ public:
     void setVideoRectangle(const IntRect& rect);
     bool shouldDownload() { return m_fillTimer.isActive(); }
 
-    void setQuirkState(const GStreamerQuirk* owner, GStreamerQuirkBase::GStreamerQuirkState&& state)
+    void setQuirkState(const GStreamerQuirk* owner, std::unique_ptr<GStreamerQuirkBase::GStreamerQuirkState>&& state)
     {
-        // Like makeUnique(), but using the move constructor instead of the copy constructor.
-        m_quirkStates.set(owner, std::unique_ptr<GStreamerQuirkBase::GStreamerQuirkState>(new GStreamerQuirkBase::GStreamerQuirkState(WTFMove(state))));
+        m_quirkStates.set(owner, WTFMove(state));
     }
 
     GStreamerQuirkBase::GStreamerQuirkState* quirkState(const GStreamerQuirk* owner)
