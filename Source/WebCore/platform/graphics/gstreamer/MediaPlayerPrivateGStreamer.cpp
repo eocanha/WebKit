@@ -579,7 +579,7 @@ bool MediaPlayerPrivateGStreamer::doSeek(const SeekTarget& target, float rate)
     // Stream mode. Seek will automatically deplete buffer level, so we always want to pause the pipeline and wait until the
     // buffer is replenished. But we don't want this behaviour on immediate seeks that only change the playback rate.
     // We restrict this behaviour to protocols that use NetworkProcess.
-    if (!m_downloadBuffer && !m_isChangingRate && m_url.protocolIsInHTTPFamily()) {
+    if (!m_downloadBuffer && !m_isChangingRate && m_url.protocolIsInHTTPFamily() && currentTime() != startTime) {
         GST_DEBUG_OBJECT(pipeline(), "[Buffering] Pausing pipeline, resetting buffering level to 0 and forcing m_isBuffering true before seeking on stream mode");
 
         auto& quirksManager = GStreamerQuirksManager::singleton();
