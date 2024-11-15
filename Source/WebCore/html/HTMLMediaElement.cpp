@@ -6378,7 +6378,7 @@ void HTMLMediaElement::updatePlayState()
     if (shouldBePlaying) {
         invalidateCachedTime();
 
-        if (playerPaused) {
+        if (playerPaused && (!m_seeking || (m_seeking && m_firstTimePlaying))) {
             mediaSession().clientWillBeginPlayback();
 
             // Set rate, muted and volume before calling play in case they were set before the media engine was set up.
