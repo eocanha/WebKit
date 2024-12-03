@@ -30,6 +30,7 @@
 #include "FloatRect.h"
 #include "NotImplemented.h"
 #include "Widget.h"
+#include "stdio.h"
 
 namespace WebCore {
 
@@ -103,5 +104,68 @@ bool screenIsTouchPrimaryInputDevice()
     return true;
 }
 #endif
+
+struct FileHandleDeleter {
+    void operator()(FILE* f) { fclose(f); }
+};
+
+using FileHandle = std::unique_ptr<FILE, FileHandleDeleter>;
+
+static bool tryOpeningForUnbufferedReading(FileHandle& handle, const char* filePath)
+{
+    // Check whether the file handle is already valid.
+    if (handle)
+        return true;
+
+    // Else, try opening it and disable buffering after opening.
+    if (auto* f = fopen(filePath, "r")) {
+        setbuf(f, nullptr);
+        handle.reset(f);
+        return true;
+    }
+
+    // Could not produce a valid handle.
+    return false;
+}
+
+bool screenSupportsHighDynamicRange(Widget*)
+{
+    printf("### %s\n", __PRETTY_FUNCTION__); fflush(stdout);
+
+    static const char* s_procBrcmBhdmEdid = "/proc/brcm/bhdm_edid";
+
+    FileHandle procBrcmBhdmEdidFile;
+    if (tryOpeningForUnbufferedReading(procBrcmBhdmEdidFile, s_procBrcmBhdmEdid)
+        && procBrcmBhdmEdidFile.get() && !fseek(procBrcmBhdmEdidFile.get(), 0, SEEK_SET)) {
+        while (!feof(procBrcmBhdmEdidFile.get())) {
+            constexpr unsigned BRCM_BHDM_EDID_LINE_BUFFER_SIZE = 1024;
+            char line[BRCM_BHDM_EDID_LINE_BUFFER_SIZE] = { 0 };
+            //size_t amount;
+            if (fgets(line, BRCM_BHDM_EDID_LINE_BUFFER_SIZE, procBrcmBhdmEdidFile.get()))
+                break;
+            printf("### %s: --- %s ---\n", __PRETTY_FUNCTION__, line); fflush(stdout);
+/*
+            if (!strcmp(token, "MemTotal:"))
+                memoryTotal = amount;
+            else if (!strcmp(token, "MemFree:"))
+                memoryFree = amount;
+            else if (!strcmp(token, "MemAvailable:"))
+                memoryAvailable = amount;
+            else if (!strcmp(token, "Active(file):"))
+                activeFile = amount;
+            else if (!strcmp(token, "Inactive(file):"))
+                inactiveFile = amount;
+            else if (!strcmp(token, "SReclaimable:"))
+                slabReclaimable = amount;
+
+            if (memoryTotal != notSet && memoryFree != notSet && activeFile != notSet && inactiveFile != notSet && slabReclaimable != notSet)
+                break;
+*/
+        }
+    }
+
+    return false;
+}
+
 
 } // namespace WebCore

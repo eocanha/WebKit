@@ -445,17 +445,23 @@ static bool dynamicRangeEvaluate(CSSValue* value, const CSSToLengthConversionDat
     if (!value)
         return false;
 
-    if (!frame.settings().hdrMediaCapabilitiesEnabled())
+    if (!frame.settings().hdrMediaCapabilitiesEnabled()) {
+        printf("### %s: hdrMediaCapabilitiesEnabled() is false\n", __PRETTY_FUNCTION__); fflush(stdout);
         return false;
+    }
 
     bool supportsHighDynamicRange;
 
-    if (frame.settings().forcedSupportsHighDynamicRangeValue() == ForcedAccessibilityValue::On)
+    if (frame.settings().forcedSupportsHighDynamicRangeValue() == ForcedAccessibilityValue::On) {
         supportsHighDynamicRange = true;
-    else if (frame.settings().forcedSupportsHighDynamicRangeValue() == ForcedAccessibilityValue::Off)
+        printf("### %s: forcedSupportsHighDynamicRangeValue() is false\n", __PRETTY_FUNCTION__); fflush(stdout);
+    } else if (frame.settings().forcedSupportsHighDynamicRangeValue() == ForcedAccessibilityValue::Off) {
         supportsHighDynamicRange = false;
-    else
+        printf("### %s: forcedSupportsHighDynamicRangeValue() is true\n", __PRETTY_FUNCTION__); fflush(stdout);
+    } else {
         supportsHighDynamicRange = screenSupportsHighDynamicRange(frame.mainFrame().view());
+        printf("### %s: screenSupportsHighDynamicRange() is %s\n", __PRETTY_FUNCTION__, boolForPrinting(supportsHighDynamicRange)); fflush(stdout);
+    }
 
     switch (downcast<CSSPrimitiveValue>(*value).valueID()) {
     case CSSValueHigh:
