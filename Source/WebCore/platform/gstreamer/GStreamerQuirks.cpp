@@ -32,6 +32,7 @@
 #include "GStreamerQuirkBcmNexus.h"
 #include "GStreamerQuirkBroadcom.h"
 #include "GStreamerQuirkRealtek.h"
+#include "GStreamerQuirkOpenMAX.h"
 #include "GStreamerQuirkRialto.h"
 #include "GStreamerQuirkWesteros.h"
 #include <wtf/NeverDestroyed.h>
@@ -81,6 +82,9 @@ GStreamerQuirksManager::GStreamerQuirksManager(bool isForTesting, bool loadQuirk
 #if PLATFORM(BCM_NEXUS)
         quirksListBuilder.append("bcmnexus,");
 #endif
+#if PLATFORM(RPI) && CPU(ARM) && !CPU(ARM64)
+        quirksListBuilder.append("openmax,");
+#endif
 #if PLATFORM(REALTEK)
         quirksListBuilder.append("realtek,");
 #endif
@@ -92,7 +96,7 @@ GStreamerQuirksManager::GStreamerQuirksManager(bool isForTesting, bool loadQuirk
     GST_DEBUG("Attempting to parse requested quirks: %s", quirks.ascii().data());
     if (!quirks.isEmpty()) {
         if (WTF::equalLettersIgnoringASCIICase(quirks, "help"_s)) {
-            WTFLogAlways("Supported quirks for WEBKIT_GST_QUIRKS are: amlogic, broadcom, bcmnexus, realtek, westeros");
+            WTFLogAlways("Supported quirks for WEBKIT_GST_QUIRKS are: amlogic, broadcom, bcmnexus, openmax, realtek, westeros");
             return;
         }
 
@@ -104,6 +108,8 @@ GStreamerQuirksManager::GStreamerQuirksManager(bool isForTesting, bool loadQuirk
                 quirk = WTF::makeUnique<GStreamerQuirkBroadcom>();
             else if (WTF::equalLettersIgnoringASCIICase(identifier, "bcmnexus"_s))
                 quirk = WTF::makeUnique<GStreamerQuirkBcmNexus>();
+            else if (WTF::equalLettersIgnoringASCIICase(identifier, "openmax"_s))
+                quirk = WTF::makeUnique<GStreamerQuirkOpenMAX>();
             else if (WTF::equalLettersIgnoringASCIICase(identifier, "realtek"_s))
                 quirk = WTF::makeUnique<GStreamerQuirkRealtek>();
             else if (WTF::equalLettersIgnoringASCIICase(identifier, "rialto"_s))
@@ -365,6 +371,13 @@ void GStreamerQuirksManager::setupBufferingPercentageCorrection(MediaPlayerPriva
             return;
         }
     }
+}
+
+void GStreamerQuirksManager::processWebAudioSilentBuffer(GstBuffer* buffer) const
+{
+    for (const auto& quirk : m_quirks)
+        if (quirk->processWebAudioSilentBuffer(buffer))
+            break;
 }
 
 #undef GST_CAT_DEFAULT

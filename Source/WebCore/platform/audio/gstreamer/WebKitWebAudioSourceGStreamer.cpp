@@ -28,6 +28,7 @@
 #include "AudioIOCallback.h"
 #include "AudioUtilities.h"
 #include "GStreamerCommon.h"
+#include "GStreamerQuirks.h"
 #include <gst/app/gstappsrc.h>
 #include <gst/audio/audio-info.h>
 #include <gst/pbutils/missing-plugins.h>
@@ -363,8 +364,13 @@ static void webKitWebAudioSrcRenderAndPushFrames(const GRefPtr<GstElement>& elem
     GST_BUFFER_TIMESTAMP(buffer.get()) = outputTimestamp.position.nanoseconds();
     GST_BUFFER_DURATION(buffer.get()) = duration;
 
-    if (priv->bus->isSilent())
-        GST_BUFFER_FLAG_SET(buffer.get(), GST_BUFFER_FLAG_GAP);
+    if (priv->bus->isSilent()) {
+        auto& quirksManager = GStreamerQuirksManager::singleton();
+        if (quirksManager.isEnabled())
+            quirksManager.processWebAudioSilentBuffer(buffer.get());
+        else
+            GST_BUFFER_FLAG_SET(buffer.get(), GST_BUFFER_FLAG_GAP);
+    }
 
     // Leak the buffer ref, because gst_app_src_push_buffer steals it.
     GstFlowReturn ret = gst_app_src_push_buffer(GST_APP_SRC(priv->source.get()), buffer.leakRef());
