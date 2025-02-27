@@ -39,6 +39,7 @@
         await waitFor(sourceBuffer,'update');
         run('video.play()');
         await waitFor(video, 'playing');
+//###   source.endOfStream();
         await Promise.all([
             testExpectedEventuallySilent('video.currentTime', 1, '>='),
             waitFor(video, 'waiting')
