@@ -25,6 +25,7 @@
 
 #include "config.h"
 #include "MediaPlayerPrivateGStreamer.h"
+#include <gst/gstquery.h>
 
 #if ENABLE(VIDEO) && USE(GSTREAMER)
 
@@ -1588,9 +1589,21 @@ MediaTime MediaPlayerPrivateGStreamer::playbackPosition() const
     // Cached position is marked as non valid here but we might fail to get a new one so initializing to this as "educated guess".
     MediaTime playbackPosition = m_cachedPosition;
 
-    if (GST_CLOCK_TIME_IS_VALID(gstreamerPosition))
+    if (GST_CLOCK_TIME_IS_VALID(gstreamerPosition)) {
         playbackPosition = MediaTime(gstreamerPosition, GST_SECOND);
-    else if (m_canFallBackToLastFinishedSeekPosition)
+        if (isMediaSource() && playbackPosition == m_cachedPosition) {
+            auto *playerPrivateMSE = reinterpret_cast<MediaPlayerPrivateGStreamerMSE*>(const_cast<MediaPlayerPrivateGStreamer*>(this));
+            bool isPaused = paused();
+            bool hasFutureTime = playerPrivateMSE->hasFutureTime(m_cachedPosition);
+            if (!isPaused && hasFutureTime) {
+                // Apparently, the player got stuck. Let's force the emission of as many decoded frames as possible with a drain query.
+                GRefPtr<GstQuery> drainQuery = adoptGRef(gst_query_new_drain());
+                bool handled = gst_element_query(GST_ELEMENT(playerPrivateMSE->webKitMediaSrc()), drainQuery.get());
+                GST_DEBUG_OBJECT(pipeline(), "The player seems stuck at %s. Sent drain query to force emission of the last decoded frames. Handled: %s",
+                    playbackPosition.toString().utf8().data(), boolForPrinting(handled));
+            }
+        }
+    } else if (m_canFallBackToLastFinishedSeekPosition)
         playbackPosition = m_seekTarget.time;
 
     setCachedPosition(playbackPosition);

@@ -23,6 +23,8 @@
 
 #include "config.h"
 #include "WebKitMediaSourceGStreamer.h"
+#include <gst/gstpad.h>
+#include <gst/gstquery.h>
 
 #if ENABLE(VIDEO) && ENABLE(MEDIA_SOURCE) && USE(GSTREAMER)
 
@@ -256,6 +258,21 @@ static gboolean webKitMediaSrcQuery(GstElement* element, GstQuery* query)
         return TRUE;
     }
 #endif
+
+    if (GST_QUERY_TYPE(query) == GST_QUERY_DRAIN) {
+        // Drain the video stream (and only that one, assuming there's only one).
+        auto* webKitMediaSrc = reinterpret_cast<WebKitMediaSrc*>(element);
+        for (auto stream : webKitMediaSrc->priv->streams.values()) {
+            if (stream->track.get().type() == TrackPrivateBaseGStreamer::TrackType::Video) {
+                GRefPtr<GstPad> sinkPeerPad = adoptGRef(gst_pad_get_peer(stream->pad.get()));
+                bool result = gst_pad_query(sinkPeerPad.get(), query);
+                GST_DEBUG("!!! Drain query on video stream. Handled: %s", boolForPrinting(result));
+                return result;
+            }
+        }
+        GST_DEBUG("!!! No video stream to answer drain query");
+        return FALSE;
+    }
 
     gboolean result = GST_ELEMENT_CLASS(webkit_media_src_parent_class)->query(element, query);
 

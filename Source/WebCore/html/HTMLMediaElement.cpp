@@ -3126,6 +3126,17 @@ void HTMLMediaElement::applyConfiguration(const RemotePlaybackConfiguration& con
         resumeAutoplaying();
 }
 
+static const char* readyStateToString(HTMLMediaElement::ReadyState state) {
+    switch (state) {
+    case HTMLMediaElement::ReadyState::HAVE_NOTHING: return "HaveNothing";
+    case HTMLMediaElement::ReadyState::HAVE_METADATA: return "HaveMetadata";
+    case HTMLMediaElement::ReadyState::HAVE_CURRENT_DATA: return "HaveCurrentData";
+    case HTMLMediaElement::ReadyState::HAVE_FUTURE_DATA: return "HaveFutureData";
+    case HTMLMediaElement::ReadyState::HAVE_ENOUGH_DATA: return "HaveEnoughData";
+    default: return "Unknown";
+    }
+}
+
 void HTMLMediaElement::setReadyState(MediaPlayer::ReadyState state)
 {
     // Set "wasPotentiallyPlaying" BEFORE updating m_readyState, potentiallyPlaying() uses it
@@ -3140,6 +3151,8 @@ void HTMLMediaElement::setReadyState(MediaPlayer::ReadyState state)
         return;
 
     m_tracksAreReady = tracksAreReady;
+
+    printf("!!! %s: readyState: %s --> %s\n", __PRETTY_FUNCTION__, readyStateToString(oldState), readyStateToString(newState));
 
     ALWAYS_LOG(LOGIDENTIFIER, "new state = ", state, ", current state = ", m_readyState);
 

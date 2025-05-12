@@ -97,6 +97,8 @@ public:
     void setShouldDisableSleep(bool) final;
 #endif
 
+    bool hasFutureTime(const MediaTime&) const;
+
 private:
     explicit MediaPlayerPrivateGStreamerMSE(MediaPlayer*);
 
