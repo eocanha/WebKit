@@ -25,7 +25,9 @@
 
 #include "config.h"
 #include "MediaPlayerPrivateGStreamer.h"
+#include <gst/gstelement.h>
 #include <gst/gstquery.h>
+#include <gst/video/video-event.h>
 
 #if ENABLE(VIDEO) && USE(GSTREAMER)
 
@@ -1596,10 +1598,10 @@ MediaTime MediaPlayerPrivateGStreamer::playbackPosition() const
             bool isPaused = paused();
             bool hasFutureTime = playerPrivateMSE->hasFutureTime(m_cachedPosition);
             if (!isPaused && hasFutureTime) {
-                // Apparently, the player got stuck. Let's force the emission of as many decoded frames as possible with a drain query.
-                GRefPtr<GstQuery> drainQuery = adoptGRef(gst_query_new_drain());
-                bool handled = gst_element_query(GST_ELEMENT(playerPrivateMSE->webKitMediaSrc()), drainQuery.get());
-                GST_DEBUG_OBJECT(pipeline(), "The player seems stuck at %s. Sent drain query to force emission of the last decoded frames. Handled: %s",
+                // Apparently, the player got stuck. Let's force the emission of as many decoded frames as possible with an still frame event.
+                GRefPtr<GstEvent> stillFrameEvent = adoptGRef(gst_video_event_new_still_frame(TRUE));
+                bool handled = gst_element_send_event(GST_ELEMENT(playerPrivateMSE->webKitMediaSrc()), stillFrameEvent.leakRef());
+                GST_DEBUG_OBJECT(pipeline(), "The player seems stuck at %s. Sent still frame event to force emission of the last decoded frames. Handled: %s",
                     playbackPosition.toString().utf8().data(), boolForPrinting(handled));
             }
         }

@@ -25,6 +25,7 @@
 #include "WebKitMediaSourceGStreamer.h"
 #include <gst/gstpad.h>
 #include <gst/gstquery.h>
+#include <gst/gststructure.h>
 
 #if ENABLE(VIDEO) && ENABLE(MEDIA_SOURCE) && USE(GSTREAMER)
 
@@ -258,21 +259,6 @@ static gboolean webKitMediaSrcQuery(GstElement* element, GstQuery* query)
         return TRUE;
     }
 #endif
-
-    if (GST_QUERY_TYPE(query) == GST_QUERY_DRAIN) {
-        // Drain the video stream (and only that one, assuming there's only one).
-        auto* webKitMediaSrc = reinterpret_cast<WebKitMediaSrc*>(element);
-        for (auto stream : webKitMediaSrc->priv->streams.values()) {
-            if (stream->track.get().type() == TrackPrivateBaseGStreamer::TrackType::Video) {
-                GRefPtr<GstPad> sinkPeerPad = adoptGRef(gst_pad_get_peer(stream->pad.get()));
-                bool result = gst_pad_query(sinkPeerPad.get(), query);
-                GST_DEBUG("!!! Drain query on video stream. Handled: %s", boolForPrinting(result));
-                return result;
-            }
-        }
-        GST_DEBUG("!!! No video stream to answer drain query");
-        return FALSE;
-    }
 
     gboolean result = GST_ELEMENT_CLASS(webkit_media_src_parent_class)->query(element, query);
 
@@ -856,6 +842,7 @@ static gboolean webKitMediaSrcSendEvent(GstElement* element, GstEvent* eventTran
     }
     case GST_EVENT_CUSTOM_DOWNSTREAM_OOB: {
         WebKitMediaSrc* source = WEBKIT_MEDIA_SRC(element);
+
         bool forwardToAllPads = GStreamerQuirksManager::singleton().analyzeWebKitMediaSrcCustomEvent(event);
         bool wasEventHandledByAnyStream = false;
         bool wasEventHandledByAllStreams = false;
@@ -872,6 +859,23 @@ static gboolean webKitMediaSrcSendEvent(GstElement* element, GstEvent* eventTran
         if (rate.has_value())
             source->priv->rate = rate.value();
         return forwardToAllPads ? wasEventHandledByAllStreams : wasEventHandledByAnyStream;
+    }
+    case GST_EVENT_CUSTOM_DOWNSTREAM: {
+        if (gst_structure_has_name(gst_event_get_structure(event.get()), "GstEventStillFrame")) {
+            // Drain the video stream (and only that one, assuming there's only one).
+            WebKitMediaSrc* source = WEBKIT_MEDIA_SRC(element);
+            for (auto stream : source->priv->streams.values()) {
+                if (stream->track.get().type() == TrackPrivateBaseGStreamer::TrackType::Video) {
+                    GRefPtr<GstPad> sinkPeerPad = adoptGRef(gst_pad_get_peer(stream->pad.get()));
+                    bool result = gst_pad_send_event(sinkPeerPad.get(), event.leakRef());
+                    GST_DEBUG_OBJECT(element, "!!! Still frame event on video stream. Handled: %s", boolForPrinting(result));
+                    return result;
+                }
+            }
+            GST_DEBUG_OBJECT(element, "!!! No video stream to send the still frame event to");
+            return FALSE;
+        }
+        FALLTHROUGH;
     }
     default:
         return GST_ELEMENT_CLASS(webkit_media_src_parent_class)->send_event(element, event.leakRef());
