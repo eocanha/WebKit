@@ -1598,9 +1598,23 @@ MediaTime MediaPlayerPrivateGStreamer::playbackPosition() const
     // Cached position is marked as non valid here but we might fail to get a new one so initializing to this as "educated guess".
     MediaTime playbackPosition = m_cachedPosition;
 
-    if (GST_CLOCK_TIME_IS_VALID(gstreamerPosition))
+    if (GST_CLOCK_TIME_IS_VALID(gstreamerPosition)) {
         playbackPosition = MediaTime(gstreamerPosition, GST_SECOND);
-    else if (m_canFallBackToLastFinishedSeekPosition)
+        if (isMediaSource() && m_videoDecoderPlatform == GstVideoDecoderPlatform::LibAv) {
+            if (playbackPosition == m_cachedPosition && m_lastStalledPosition.isInvalid()) {
+                auto* playerPrivateMSE = reinterpret_cast<MediaPlayerPrivateGStreamerMSE*>(const_cast<MediaPlayerPrivateGStreamer*>(this));
+                if (!paused() && playerPrivateMSE->hasFutureTime(m_cachedPosition)) {
+                    m_lastStalledPosition = playbackPosition;
+                    // Apparently, the player got stuck. Let's force the emission of as many decoded frames as possible with an still frame event.
+                    GRefPtr<GstEvent> stillFrameEvent = adoptGRef(gst_video_event_new_still_frame(TRUE));
+                    gst_element_send_event(GST_ELEMENT(playerPrivateMSE->webKitMediaSrc()), stillFrameEvent.leakRef());
+                    GST_DEBUG_OBJECT(pipeline(), "The player seems stuck at %s. Sent still frame event to force emission of the last decoded frames",
+                        playbackPosition.toString().utf8().data());
+                }
+            } else if (m_lastStalledPosition.isValid() && m_lastStalledPosition != playbackPosition)
+                m_lastStalledPosition = MediaTime::invalidTime();
+        }
+    } else if (m_canFallBackToLastFinishedSeekPosition)
         playbackPosition = m_seekTarget.time;
 
     setCachedPosition(playbackPosition);
@@ -3456,11 +3470,14 @@ void MediaPlayerPrivateGStreamer::configureVideoDecoder(GstElement* decoder)
         m_videoDecoderPlatform = GstVideoDecoderPlatform::ImxVPU;
     else if (nameView.startsWith("omx"_s))
         m_videoDecoderPlatform = GstVideoDecoderPlatform::OpenMAX;
-    else if (gstElementMatchesFactoryAndHasProperty(decoder, "avdec*"_s, "max-threads"_s)) {
-        // Set the decoder maximum number of threads to a low, fixed value, not depending on the
-        // platform. This also helps with processing metrics gathering. When using the default value
-        // the decoder introduces artificial processing latency reflecting the maximum number of threads.
-        g_object_set(decoder, "max-threads", 2, nullptr);
+    else if (nameView.startsWith("avdec"_s)) {
+        m_videoDecoderPlatform = GstVideoDecoderPlatform::LibAv;
+        if (gstObjectHasProperty(decoder, "max-threads"_s)) {
+            // Set the decoder maximum number of threads to a low, fixed value, not depending on the
+            // platform. This also helps with processing metrics gathering. When using the default value
+            // the decoder introduces artificial processing latency reflecting the maximum number of threads.
+            g_object_set(decoder, "max-threads", 2, nullptr);
+        }
     }
 
     if (gstObjectHasProperty(decoder, "max-errors"_s))
