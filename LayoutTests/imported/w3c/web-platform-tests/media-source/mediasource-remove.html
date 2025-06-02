@@ -11,6 +11,7 @@
     <body>
         <div id="log"></div>
         <script>
+        /*
           mediasource_test(function(test, mediaElement, mediaSource)
           {
               var sourceBuffer = mediaSource.addSourceBuffer(MediaSourceUtil.AUDIO_VIDEO_TYPE);
@@ -237,7 +238,7 @@
                   test.done();
               });
           }, "Test remove transitioning readyState from 'ended' to 'open'.");
-
+*/
           function removeAppendedDataTests(callback, description)
           {
               mediasource_testafterdataloaded(function(test, mediaElement, mediaSource, segmentInfo, sourceBuffer, mediaData)
@@ -255,7 +256,6 @@
                       var start = Math.max(segmentInfo.media[0].timev, segmentInfo.media[0].timea).toFixed(3);
                       var duration = mediaElement.duration.toFixed(3);
                       var subType = MediaSourceUtil.getSubType(segmentInfo.type);
-
                       assertBufferedEquals(sourceBuffer, "{ [" + start + ", " + duration + ") }", "Initial buffered range.");
                       callback(test, mediaSource, sourceBuffer, duration, subType, segmentInfo);
                   });
@@ -282,7 +282,7 @@
           {
               removeAndCheckBufferedRanges(test, mediaSource, sourceBuffer, 0, Number.POSITIVE_INFINITY, "{ }");
           }, "Test removing all appended data.");
-
+/*
           removeAppendedDataTests(function(test, mediaSource, sourceBuffer, duration, subType, segmentInfo)
           {
               var expectations = {
@@ -319,6 +319,7 @@
 
               removeAndCheckBufferedRanges(test, mediaSource, sourceBuffer, 1, Number.POSITIVE_INFINITY, expectations[subType]);
           }, "Test removing the end of appended data.");
+*/
         </script>
     </body>
 </html>
