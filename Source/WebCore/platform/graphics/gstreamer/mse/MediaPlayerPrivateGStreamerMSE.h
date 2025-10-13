@@ -54,6 +54,7 @@ public:
 
     void play() override;
     void pause() override;
+    void willSeekToTarget(const MediaTime& time) override;
     void seekToTarget(const SeekTarget&) override;
     bool doSeek(const SeekTarget&, float rate) override;
 

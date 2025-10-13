@@ -624,6 +624,8 @@ static void webKitMediaSrcLoop(void* userData)
         if (result == GST_FLOW_NOT_LINKED && stream->track->type() == TrackPrivateBaseGStreamer::TrackType::Video) {
             // We allow multiple video tracks and all of them except one may be unlinked. Just drop the buffer.
             GST_TRACE_OBJECT(pad, "Buffer not pushed because pad is not-linked, ignoring");
+        } else if (result == GST_FLOW_EOS) {
+            GST_TRACE_OBJECT(pad, "Buffer not pushed because pad is on EOS, ignoring");
         } else if (result != GST_FLOW_OK && result != GST_FLOW_FLUSHING) {
             gst_pad_pause_task(pad);
             GST_ELEMENT_ERROR(stream->source, CORE, PAD, ("Failed to push buffer"), ("gst_pad_push() returned %s", gst_flow_get_name(result)));
