@@ -139,12 +139,28 @@ private:
 
     Ref<MediaTimePromise> waitForTarget(const SeekTarget& target) final
     {
+        printf("%s: !!! (A) !!!\n", __PRETTY_FUNCTION__); fflush(stdout);
+        printf("%s: !!! (B) this: %p, target: %p %s!!!\n", __PRETTY_FUNCTION__, this, &target, target.toString().utf8().data()); fflush(stdout);
         MediaTimePromise::AutoRejectProducer producer(PlatformMediaError::SourceRemoved);
         auto promise = producer.promise();
+        printf("%s: !!! (C) this: %p, target: %p %s!!!\n", __PRETTY_FUNCTION__, this, &target, target.toString().utf8().data()); fflush(stdout);
 
         ensureWeakOnDispatcher([producer = WTFMove(producer), target](MediaSource& parent) mutable {
-            parent.waitForTarget(target)->chainTo(WTFMove(producer));
+            printf("%s: !!! (D) parent: %p, target: %p %s!!!\n", __PRETTY_FUNCTION__, &parent, &target, target.toString().utf8().data()); fflush(stdout);
+
+            auto parentPromise = parent.waitForTarget(target);
+            printf("%s: !!! (E) target: %p %s, parentPromise: %p!!!\n", __PRETTY_FUNCTION__, &parent, target.toString().utf8().data(), parentPromise.ptr()); fflush(stdout);
+
+            if (!parentPromise.ptr()) {
+                // ### Ouch, a Ref that holds a null pointer! =:-O ###
+                printf("%s: !!! (F) parentPromise is null!!! parent: %p, target: %p %s!!!\n", __PRETTY_FUNCTION__, &parent, &target, target.toString().utf8().data()); fflush(stdout);
+                return;
+            }
+
+            parentPromise->chainTo(WTFMove(producer));
+            printf("%s: !!! (G) parent: %p, target: %p %s!!!\n", __PRETTY_FUNCTION__, &parent, &target, target.toString().utf8().data()); fflush(stdout);
         });
+        printf("%s: !!! (Z) this: %p, target: %p %s, return promise %p!!!\n", __PRETTY_FUNCTION__, this, &target, target.toString().utf8().data(), promise.ptr()); fflush(stdout);
         return promise;
     }
 
@@ -328,14 +344,17 @@ PlatformTimeRanges MediaSource::buffered() const
 
 Ref<MediaTimePromise> MediaSource::waitForTarget(const SeekTarget& target)
 {
+    printf("%s: !!! target.time: %s !!!\n", __PRETTY_FUNCTION__, target.time.toString().utf8().data()); fflush(stdout);
     ALWAYS_LOG(LOGIDENTIFIER, target.time);
 
     // 2.4.3 Seeking
     // https://rawgit.com/w3c/media-source/45627646344eea0170dd1cbc5a3d508ca751abb8/media-source-respec.html#mediasource-seeking
 
     if (m_seekTargetPromise) {
+        printf("%s: !!! Rejecting old promise %p from previous seek !!!\n", __PRETTY_FUNCTION__, m_seekTargetPromise->promise().ptr()); fflush(stdout);
         ALWAYS_LOG(LOGIDENTIFIER, "Previous seeking to ", m_pendingSeekTarget->time, "pending, cancelling it");
         m_seekTargetPromise->reject(PlatformMediaError::Cancelled);
+        printf("%s: !!! Rejected old promise %p from previous seek !!!\n", __PRETTY_FUNCTION__, m_seekTargetPromise->promise().ptr()); fflush(stdout);
     }
     m_seekTargetPromise.emplace(PlatformMediaError::SourceRemoved);
     m_pendingSeekTarget = target;
@@ -355,12 +374,14 @@ Ref<MediaTimePromise> MediaSource::waitForTarget(const SeekTarget& target)
         // than HAVE_METADATA.
         monitorSourceBuffers();
 
+        printf("%s: !!! target.time %s return (A) promise %p !!!\n", __PRETTY_FUNCTION__, target.time.toString().utf8().data(), m_seekTargetPromise->promise().ptr()); fflush(stdout);
         return m_seekTargetPromise->promise();
     }
     // ↳ Otherwise
     // Continue
     auto promise = m_seekTargetPromise->promise();
     completeSeek();
+    printf("%s: !!! target.time %s return (B) promise %p !!!\n", __PRETTY_FUNCTION__, target.time.toString().utf8().data(), promise.ptr()); fflush(stdout);
     return promise;
 }
 
