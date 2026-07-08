@@ -375,14 +375,16 @@ PlatformTimeRanges MediaSource::buffered() const
 
 Ref<MediaTimePromise> MediaSource::waitForTarget(const SeekTarget& target)
 {
-    ALWAYS_LOG(LOGIDENTIFIER, target.time);
+    ALWAYS_LOG(LOGIDENTIFIER, target.time, " ENTER");
 
     // 2.4.3 Seeking
     // https://rawgit.com/w3c/media-source/45627646344eea0170dd1cbc5a3d508ca751abb8/media-source-respec.html#mediasource-seeking
 
     RefPtr msp = m_private;
-    if (!msp)
+    if (!msp) {
         return MediaTimePromise::createAndReject(PlatformMediaError::SourceRemoved);
+        ALWAYS_LOG(LOGIDENTIFIER, target.time, " LEAVE_NO_MSP");
+    }
 
     if (m_seekTargetPromise) {
         ALWAYS_LOG(LOGIDENTIFIER, "Previous seeking to ", m_pendingSeekTarget->time, "pending, cancelling it");
@@ -396,7 +398,9 @@ Ref<MediaTimePromise> MediaSource::waitForTarget(const SeekTarget& target)
     // media data for the new playback position is available, and, if it is, until it has decoded enough data
     // to play back that position" step of the seek algorithm:
     // ↳ If new playback position is not in any TimeRange of HTMLMediaElement.buffered
-    if (!hasBufferedTime(target.time)) {
+    bool hasBufTime = hasBufferedTime(target.time);
+    ALWAYS_LOG(LOGIDENTIFIER, "hasbuf=", hasBufTime);
+    if (!hasBufTime) {
         ALWAYS_LOG(LOGIDENTIFIER, "No data at seeked time, waiting");
         // 1. If the HTMLMediaElement.readyState attribute is greater than HAVE_METADATA,
         // then set the HTMLMediaElement.readyState attribute to HAVE_METADATA.
@@ -407,11 +411,13 @@ Ref<MediaTimePromise> MediaSource::waitForTarget(const SeekTarget& target)
         // than HAVE_METADATA.
         monitorSourceBuffers();
 
+        ALWAYS_LOG(LOGIDENTIFIER, target.time, " LEAVE_NO_BUF_TIME");
         return promise;
     }
     // ↳ Otherwise
     // Continue
     completeSeek();
+    ALWAYS_LOG(LOGIDENTIFIER, target.time, " LEAVE_END");
     return promise;
 }
 

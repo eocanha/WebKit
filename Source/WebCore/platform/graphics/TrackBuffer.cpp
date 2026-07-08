@@ -26,6 +26,10 @@
 #include "config.h"
 #include "TrackBuffer.h"
 
+#include <gst/gst.h>
+GST_DEBUG_CATEGORY_EXTERN(webkit_media_player_debug);
+#define GST_CAT_DEFAULT webkit_media_player_debug
+
 #if ENABLE(MEDIA_SOURCE)
 
 #include "Logging.h"
@@ -264,6 +268,7 @@ void TrackBuffer::updateMinimumUpcomingPresentationTime()
 
 bool TrackBuffer::reenqueueMediaForTime(const MediaTime& time, const MediaTime& timeFudgeFactor, bool isEnded)
 {
+    GST_DEBUG("reenqueueMediaForTime time=%s (fudge=%s) isEnded=%s", time.toString().utf8().data(), timeFudgeFactor.toString().utf8().data(), isEnded ? "true" : "false");
     clearDecodeQueue();
     m_enqueueDiscontinuityBoundary = time + m_discontinuityTolerance;
 
@@ -308,6 +313,7 @@ bool TrackBuffer::reenqueueMediaForTime(const MediaTime& time, const MediaTime& 
         Ref copy = Ref { iter->second }->createNonDisplayingCopy();
         DecodeOrderSampleMap::KeyType decodeKey(copy->decodeTime(), copy->presentationTime());
         m_decodeQueue.insert(DecodeOrderSampleMap::MapType::value_type(decodeKey, WTF::move(copy)));
+        GST_DEBUG("Inserting non-displaying sample with PTS=%s", sample->presentationTime().toString().utf8().data());
     }
 
     MediaTime previousSampleTime;
@@ -325,10 +331,12 @@ bool TrackBuffer::reenqueueMediaForTime(const MediaTime& time, const MediaTime& 
         DecodeOrderSampleMap::KeyType decodeKey(sample->decodeTime(), sample->presentationTime());
         m_minimumEnqueuedPresentationTime = sample->presentationTime();
         previousSampleTime = m_minimumEnqueuedPresentationTime;
+        GST_DEBUG("Inserting sample (if) with PTS=%s", sample->presentationTime().toString().utf8().data());
         m_decodeQueue.insert(DecodeOrderSampleMap::MapType::value_type(decodeKey, WTF::move(sample)));
     }
     for (auto iter = ++currentSampleDTSIterator; iter != m_samples.decodeOrder().end(); ++iter) {
         Ref sample = iter->second;
+        GST_DEBUG("Inserting sample (loop) with PTS=%s", sample->presentationTime().toString().utf8().data());
         if (sample->presentationTime() < time) {
             Ref copy = sample->createNonDisplayingCopy();
             DecodeOrderSampleMap::KeyType decodeKey(copy->decodeTime(), copy->presentationTime());

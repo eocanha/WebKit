@@ -245,9 +245,12 @@ void MediaPlayerPrivateGStreamerMSE::seekToTarget(const SeekTarget& target)
 bool MediaPlayerPrivateGStreamerMSE::doSeek(const SeekTarget& target, float rate, bool isAsync, bool isSegment)
 {
     UNUSED_PARAM(isAsync);
+    GST_DEBUG_OBJECT(pipeline(), "target=%s rate=%f isAsync=%s isSegment=%s ENTER", target.toString().utf8().data(), rate, boolForPrinting(isAsync), boolForPrinting(isSegment));
     RefPtr player = m_player.get();
-    if (!player || !m_source)
+    if (!player || !m_source) {
+        GST_DEBUG_OBJECT(pipeline(), "LEAVE_no_player_or_no_source");
         return false;
+    }
 
     // This method should only be called outside of MediaPlayerPrivateGStreamerMSE by MediaPlayerPrivateGStreamer::setRate().
 
@@ -304,13 +307,18 @@ bool MediaPlayerPrivateGStreamerMSE::doSeek(const SeekTarget& target, float rate
     // Notify MediaSource and have new frames enqueued (when they're available).
     // Seek should only continue once the seekToTarget completionhandler has run.
     // This will also add support for fastSeek once done (see webkit.org/b/260607)
-    if (!m_mediaSourcePrivate)
+    if (!m_mediaSourcePrivate) {
+        GST_DEBUG_OBJECT(pipeline(), "LEAVE_no_msp");
         return false;
+    }
     m_mediaSourcePrivate->waitForTarget(target)->whenSettled(RunLoop::currentSingleton(), [this, weakThis = ThreadSafeWeakPtr { *this }](auto&& result) {
         RefPtr self = weakThis.get();
         if (!self || !result)
             return;
+        GST_DEBUG_OBJECT(pipeline(), "waitForTarget() promise resolved with result=%s", result->toString().utf8().data());
+        GST_DEBUG_OBJECT(pipeline(), "waitForTarget() promise cb propagating state ENTER");
         propagateReadyStateToPlayer();
+        GST_DEBUG_OBJECT(pipeline(), "waitForTarget() promise cb propagating state LEAVE");
 
         // FIXME: Should m_mediaSourcePrivate run on its own WorkQueue (e.g. if MSE in a worker is enabled)
         // this should be changed for the async version of reenqueueMediaForTime.
@@ -356,6 +364,7 @@ bool MediaPlayerPrivateGStreamerMSE::doSeek(const SeekTarget& target, float rate
             }
         }
     });
+    GST_DEBUG_OBJECT(pipeline(), "LEAVE_end");
     return true;
 }
 
@@ -396,10 +405,10 @@ void MediaPlayerPrivateGStreamerMSE::readyStateFromMediaSourceChanged()
 
 void MediaPlayerPrivateGStreamerMSE::propagateReadyStateToPlayer()
 {
-    if (m_readyState == m_mediaSourceReadyState)
-        return;
     GST_DEBUG("Propagating MediaSource readyState %s to player ready state (currently %s)",
         dumpReadyState(m_mediaSourceReadyState).characters(), dumpReadyState(m_readyState).characters());
+    if (m_readyState == m_mediaSourceReadyState)
+        return;
 
     m_readyState = m_mediaSourceReadyState;
     updateStates(); // Set the pipeline to PLAYING or PAUSED if necessary.

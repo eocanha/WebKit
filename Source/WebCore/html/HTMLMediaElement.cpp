@@ -27,6 +27,10 @@
 #include "config.h"
 #include "HTMLMediaElement.h"
 
+#include <gst/gst.h>
+GST_DEBUG_CATEGORY_EXTERN(webkit_media_player_debug);
+#define GST_CAT_DEFAULT webkit_media_player_debug
+
 #if ENABLE(VIDEO)
 
 #include "Attribute.h"
@@ -3281,8 +3285,10 @@ void HTMLMediaElement::setReadyState(MediaPlayer::ReadyState state)
         }
 
         // 4.8.10.10 step 14 & 15.
-        if (m_seekRequested && !player->seeking() && m_readyState >= HAVE_CURRENT_DATA)
+        if (m_seekRequested && !player->seeking() && m_readyState >= HAVE_CURRENT_DATA) {
+            GST_DEBUG("calling finishSeek");
             finishSeek();
+        }
     } else {
         if (wasPotentiallyPlaying && m_readyState < HAVE_FUTURE_DATA) {
             // 4.8.10.8
@@ -3908,6 +3914,7 @@ void HTMLMediaElement::seekInternal(const MediaTime& time)
 
 void HTMLMediaElement::seekWithTolerance(const SeekTarget& target, bool fromDOM)
 {
+    ALWAYS_LOG(LOGIDENTIFIER, target, " ENTER");
     HTMLMEDIAELEMENT_RELEASE_LOG(SeekWithTolerance, target.toString().utf8());
     // 4.8.10.9 Seeking
 
@@ -3915,12 +3922,16 @@ void HTMLMediaElement::seekWithTolerance(const SeekTarget& target, bool fromDOM)
     setShowPosterFlag(false);
 
     // 2 - If the media element's readyState is HAVE_NOTHING, abort these steps.
-    if (m_readyState == HAVE_NOTHING)
+    if (m_readyState == HAVE_NOTHING) {
+        ALWAYS_LOG(LOGIDENTIFIER, target, " LEAVE_HAVE_NOTHING");
         return;
+    }
 
     RefPtr player = m_player;
-    if (!player)
+    if (!player) {
+        ALWAYS_LOG(LOGIDENTIFIER, target, " LEAVE_NO_PLAYER");
         return;
+    }
 
     // If the media engine has been told to postpone loading data, let it go ahead now.
     if (m_preload < MediaPlayer::Preload::Auto && m_readyState < HAVE_FUTURE_DATA)
@@ -3974,15 +3985,17 @@ void HTMLMediaElement::seekWithTolerance(const SeekTarget& target, bool fromDOM)
         protect(mediaSession())->removeBehaviorRestriction(MediaElementSession::RequireUserGestureToControlControlsManager);
 
     ImageOverlay::removeOverlaySoonIfNeeded(*this);
+    ALWAYS_LOG(LOGIDENTIFIER, target, " LEAVE_END");
 }
 
 void HTMLMediaElement::seekTask()
 {
-    INFO_LOG(LOGIDENTIFIER);
+    INFO_LOG(LOGIDENTIFIER, " ENTER");
 
     RefPtr player = m_player;
     if (!player) {
         clearSeeking();
+        INFO_LOG(LOGIDENTIFIER, " LEAVE_no_player");
         return;
     }
 
@@ -4051,6 +4064,7 @@ void HTMLMediaElement::seekTask()
                 scheduleEvent(eventNames().canplayEvent);
         }
         clearSeeking();
+        INFO_LOG(LOGIDENTIFIER, " LEAVE_no_seek_required");
         return;
     }
     time = seekableRanges->ranges().nearest(time);
@@ -4073,6 +4087,7 @@ void HTMLMediaElement::seekTask()
 
     if (!shouldSpeakCueTextForTime(time))
         cancelSpeakingCueText();
+    INFO_LOG(LOGIDENTIFIER, " LEAVE_end");
 }
 
 void HTMLMediaElement::clearSeeking()
@@ -4093,6 +4108,7 @@ void HTMLMediaElement::finishSeek()
     // 14 - Set the seeking IDL attribute to false.
     clearSeeking();
 
+    GST_DEBUG("finishSeek!");
     HTMLMEDIAELEMENT_RELEASE_LOG(FinishSeek, currentMediaTime().toDouble(), !!m_pendingSeek);
 
     if (!m_pendingSeek) {
@@ -5908,8 +5924,10 @@ void HTMLMediaElement::mediaPlayerTimeChanged()
     bool wasSeeking = seeking();
 
     // 4.8.10.9 step 14 & 15.  Needed if no ReadyState change is associated with the seek.
-    if (m_seekRequested && m_readyState >= HAVE_CURRENT_DATA && !protect(player())->seeking())
+    if (m_seekRequested && m_readyState >= HAVE_CURRENT_DATA && !protect(player())->seeking()) {
+        GST_DEBUG("calling finishSeek");
         finishSeek();
+    }
 
     // Otherwise schedule a discontinuity 'timeupdate' (per the spec's timeupdate event
     // definition: "the current playback position changed [...] in an especially
