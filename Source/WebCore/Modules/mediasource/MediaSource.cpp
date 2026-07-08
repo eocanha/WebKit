@@ -376,6 +376,8 @@ PlatformTimeRanges MediaSource::buffered() const
 Ref<MediaTimePromise> MediaSource::waitForTarget(const SeekTarget& target)
 {
     ALWAYS_LOG(LOGIDENTIFIER, target.time, " ENTER");
+    // if (target.time == MediaTime::zeroTime())
+    //     abort();
 
     // 2.4.3 Seeking
     // https://rawgit.com/w3c/media-source/45627646344eea0170dd1cbc5a3d508ca751abb8/media-source-respec.html#mediasource-seeking
@@ -533,7 +535,7 @@ bool MediaSource::hasBufferedTime(const MediaTime& time)
     if (time.isInvalid())
         return false;
 
-    if (time > duration())
+    if (time > duration() /* + MediaTime(1, 1000)*/)
         return false;
 
     Ref msp = *m_private;

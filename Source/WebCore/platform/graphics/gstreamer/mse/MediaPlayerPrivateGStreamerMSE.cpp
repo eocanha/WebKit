@@ -267,6 +267,7 @@ bool MediaPlayerPrivateGStreamerMSE::doSeek(const SeekTarget& target, float rate
     m_seekTarget = target;
     m_isSeeking = true;
     m_isWaitingForPreroll = true;
+    m_isWaitingForTarget = true;
     m_isEndReached = false;
 
     auto flag = (player->isLooping() && isSegment) ? GST_SEEK_FLAG_SEGMENT : GST_SEEK_FLAG_FLUSH;
@@ -393,7 +394,7 @@ void MediaPlayerPrivateGStreamerMSE::readyStateFromMediaSourceChanged()
     auto mediaSourceReadyState = mediaSourcePrivate ? mediaSourcePrivate->mediaPlayerReadyState() : MediaPlayer::ReadyState::HaveNothing;
     if (mediaSourceReadyState == m_mediaSourceReadyState)
         return;
-
+// readyStateFromMediaSourceChanged: MediaSource called setReadyState(0x7f82f81cc000): HaveEnoughData -> HaveCurrentData Current player state: HaveEnoughData Waiting for preroll: true
     GST_DEBUG("MediaSource called setReadyState(%p): %s -> %s Current player state: %s Waiting for preroll: %s", this
         , dumpReadyState(m_mediaSourceReadyState).characters(), dumpReadyState(mediaSourceReadyState).characters()
         , dumpReadyState(m_readyState).characters(), boolForPrinting(m_isWaitingForPreroll));
@@ -410,6 +411,10 @@ void MediaPlayerPrivateGStreamerMSE::propagateReadyStateToPlayer()
     if (m_readyState == m_mediaSourceReadyState)
         return;
 
+    // if (m_isWaitingForTarget) {
+    //     GST_DEBUG("Deferring propagation: still waiting for seek to resolve.");
+    //     return;
+    // }
     m_readyState = m_mediaSourceReadyState;
     updateStates(); // Set the pipeline to PLAYING or PAUSED if necessary.
     RefPtr player = m_player.get();
