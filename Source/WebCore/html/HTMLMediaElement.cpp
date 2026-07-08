@@ -6146,7 +6146,7 @@ void HTMLMediaElement::mediaPlayerPlaybackStateChanged()
     beginProcessingMediaPlayerCallback();
     if (playerPaused)
         pauseInternal();
-    else
+    else if (!seeking() || !isEnded())
         playInternal();
     endProcessingMediaPlayerCallback();
 }
