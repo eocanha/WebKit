@@ -54,6 +54,7 @@
         }
         run('source.endOfStream()');
         run('savedDuration = video.duration');
+        consoleWrite(`savedDuration = ${savedDuration}`);
         testExpected('savedDuration > 0', true);
         testExpected('video.buffered.length', 1);
 
@@ -62,11 +63,14 @@
         consoleWrite('Waiting for currentTime > 0s...');
         await waitForTimeupdateGreaterThan(video, 0)
 
-        consoleWrite('-')
+        consoleWrite(`video.currentTime = ${video.currentTime}`);
+
+        consoleWrite('-');
         consoleWrite('Seeking to the end and waiting...');
         run('video.currentTime = savedDuration');
         video.addEventListener('timeupdate', () => {
             timesSeenInTimeupdateAfterSeek.push(video.currentTime);
+            consoleWrite(`timeupdate event. video.currentTime = ${timesSeenInTimeupdateAfterSeek[timesSeenInTimeupdateAfterSeek.length - 1]}`);
         })
         await Promise.all([
             waitFor(video, 'seeking'),
