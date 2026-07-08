@@ -135,13 +135,6 @@ private:
     Vector<RefPtr<MediaSourceTrackGStreamer>> m_tracks;
 
     bool m_isWaitingForPreroll = true;
-
-    // Whether we're waiting for the promise of MediaSource::waitForTarget() to resolve.
-    // Set simultaneously with m_isSeeking, but unlike m_isSeeking, which is cleared on playback
-    // pipeline preroll, this is cleared as soon as the multiplatform layer has buffered enough
-    // frames, before they actually flow through our playback pipeline.
-    bool m_isWaitingForTarget = false;
-
     MediaPlayer::ReadyState m_mediaSourceReadyState = MediaPlayer::ReadyState::HaveNothing;
     MediaPlayer::NetworkState m_mediaSourceNetworkState = MediaPlayer::NetworkState::Empty;
 

@@ -3916,8 +3916,6 @@ void HTMLMediaElement::seekWithTolerance(const SeekTarget& target, bool fromDOM)
 {
     ALWAYS_LOG(LOGIDENTIFIER, target, " ENTER");
     HTMLMEDIAELEMENT_RELEASE_LOG(SeekWithTolerance, target.toString().utf8());
-    // if (target.time == MediaTime::zeroTime())
-        // abort();
     // 4.8.10.9 Seeking
 
     // 1 - Set the media element's show poster flag to false.
