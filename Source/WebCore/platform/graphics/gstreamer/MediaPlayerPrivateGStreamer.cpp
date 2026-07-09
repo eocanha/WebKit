@@ -1687,8 +1687,8 @@ MediaTime MediaPlayerPrivateGStreamer::playbackPosition() const
 
     // Avoid exceeding the reported duration even by miniscule amounts.
     // The multiplatform layer could degrade us to HaveMetadata if we let that happen (e.g. in MSE monitorSourceBuffers()).
-    if (playbackPosition > duration())
-        playbackPosition = duration();
+    /* if (playbackPosition > duration())
+        playbackPosition = duration(); */
 
     setCachedPosition(playbackPosition);
     invalidateCachedPositionOnNextIteration();
