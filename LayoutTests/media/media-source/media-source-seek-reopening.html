@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>media-source-seek-reopening</title>
+    <script src="media-source-loader.js"></script>
+    <script src="../video-test.js"></script>
+    <script>
+    var source;
+    var audioSourceBuffer;
+    var oldUrl;
+
+    function loaderPromise(loader) {
+        return new Promise((resolve, reject) => {
+            loader.onload = resolve;
+            loader.onerror = reject;
+        });
+    }
+
+    async function runTest() {
+        audioLoader = new MediaSourceLoader('content/test-48khz-manifest.json');
+        await loaderPromise(audioLoader);
+
+        findMediaElement();
+
+        source = new MediaSource();
+        run('video.src = URL.createObjectURL(source)');
+        await waitFor(source, 'sourceopen');
+        run('audioSourceBuffer = source.addSourceBuffer(audioLoader.type())');
+        waitFor(video, 'error').then(failTest);
+
+        consoleWrite('-');
+        consoleWrite('Load audio sourceBuffer init segment, skip first media segment, load second media segment');
+        run('audioSourceBuffer.appendBuffer(audioLoader.initSegment())');
+        await waitFor(audioSourceBuffer, 'update', true);
+        run('audioSourceBuffer.appendBuffer(audioLoader.mediaSegment(1))');
+        await waitFor(audioSourceBuffer, 'update', true);
+
+        testExpected('video.buffered.length', 1);
+        consoleWrite(`Buffered range: [${video.buffered.start(0)}, ${video.buffered.end(0)}]`);
+
+        consoleWrite('-');
+
+        run('video.currentTime = 1.5');
+        run('video.play()');
+
+        consoleWrite('-');
+
+        run('video.currentTime = 0');
+
+        consoleWrite('-');
+        consoleWrite('Detaching MediaSource');
+
+// TODO: UNDERSTAND WHAT THIS BLOCK DOES
+/* */
+        oldUrl = video.src;
+        run('video.removeAttribute("src")');
+        run('video.load()');
+        run('window.URL.revokeObjectURL(oldUrl)');
+
+        await new Promise(resolve => {
+            source.onsourceopen = () => {
+              source.onsourceopen = null;
+              consoleWrite('EVENT(sourceopen) (from promise)');
+              resolve();
+            };
+            run('video.src = URL.createObjectURL(source)');
+        })
+/* */
+
+        audioLoader = new MediaSourceLoader('content/test-48khz-manifest.json');
+        await loaderPromise(audioLoader);
+
+        //source = new MediaSource();
+        run('audioSourceBuffer = source.addSourceBuffer(audioLoader.type())');
+        waitFor(video, 'error').then(failTest);
+
+        consoleWrite('-');
+        consoleWrite('Load (again) audio sourceBuffer init segment and first media segment');
+        run('audioSourceBuffer.appendBuffer(audioLoader.initSegment())');
+        await waitFor(audioSourceBuffer, 'update', true);
+        run('audioSourceBuffer.appendBuffer(audioLoader.mediaSegment(0))');
+        await waitFor(audioSourceBuffer, 'update', true);
+
+        testExpected('video.buffered.length', 1);
+        consoleWrite(`Buffered range: [${video.buffered.start(0)}, ${video.buffered.end(0)}]`);
+        source.endOfStream();
+
+        consoleWrite('-');
+        run('video.play()');
+
+        await waitFor(video, 'ended');
+    }
+
+    window.addEventListener('load', event => {
+        runTest().then(endTest).catch(failTest);
+    })
+    </script>
+</head>
+<body>
+    <div>
+        This tests that when detaching a MediaSource in the middle of a seek and reattaching it again, a crash caused by a stale pendingSeekTarget promise doesn't happen.
+    </div>
+    <video controls muted></video>
+</body>
+</html>
